@@ -1,0 +1,5 @@
+notes
+.idea
+.vscode
+text.c
+cmake-build-debug/

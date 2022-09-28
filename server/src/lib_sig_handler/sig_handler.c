@@ -1,22 +1,14 @@
-//
-// Created by ns on 27.09.22.
-//
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
-#include <string.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include <sys/resource.h>
-#include <unistd.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <logger.h>
 
 int worker_count = 0;
 
-// отправляет текущему процессу SIGUSR1, если все дети завершились
+// отправляет текущему процессу SIGUSR1, если все воркеры завершились
 void worker_exit_handler_job(int signal) {
     pid_t pid;
     int status;
@@ -34,11 +26,9 @@ void worker_exit_handler_job(int signal) {
         info_log(str);
         worker_count--;
     }
-    // если убит последний воркер -- нужно залогировать и завершить работу процесса, для этого вызываем
     if (worker_count == 0) {
         kill(getpid(), SIGUSR1);
     }
-    // что если произошел exit() воркера? нужно пересоздавать?
 }
 
 void all_workers_killed_job(int signal) {

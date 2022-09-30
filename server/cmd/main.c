@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <getopt.h>
+#include <http.h>
 
 #define MAX_LEN_ROOT_PATH 100
 #define DEFAULT_CPU_LIMIT 4
@@ -99,7 +100,7 @@ int set_socket(int port, int *sock_fd) {
 
 static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
-    http_cb(watcher->fd, cfg->root);
+    get_http_response_cb(watcher->fd);
     close(watcher->fd);
     ev_io_stop(EV_A_ watcher);
     free(watcher);
@@ -177,7 +178,7 @@ int run_server(int cpu_limit, int sock_fd) {
     return 0;
 }
 
-// раздел \r\n переводом http-запросов/ ответов
+// раздел \r\n переводом lib_http-запросов/ ответов
 // сокет клиента может закрыться до того или во время того, как сервер будет отправлять ответ
 // сделать shut_down socket завершением процесса
 // добавить в массив пиды?? нужно ли иметь массив пидов процессов?
@@ -265,7 +266,6 @@ void set_config_default_values(struct config_t *cfg) {
 
 int main(int argc, char *argv[]) {
     init_logger();
-    init_document_root();
 
     struct config_t cfg = {0};
     if (set_config(argc, argv, &cfg) != 0) {
@@ -273,6 +273,7 @@ int main(int argc, char *argv[]) {
     }
 
     set_config_default_values(&cfg);
+    init_document_root(cfg.document_root);
 
     int sock_fd = -1;
     if (set_socket(cfg.port, &sock_fd) != 0) {

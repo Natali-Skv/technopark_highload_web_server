@@ -12,7 +12,10 @@ set(HTTP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/server/src/lib_http)
 
 set(LIB_LOG_SRCS ${LIB_LOG_DIR}/logger.c)
 set(LIB_SIG_HANDLER_SRCS ${LIB_SIG_HANDLER_DIR}/sig_handler.c)
-set(LIB_HTTP_SRCS ${HTTP_DIR}/http.c)
+set(LIB_HTTP_SRCS ${HTTP_DIR}/http.c
+        ${HTTP_DIR}/read_req.c
+        ${HTTP_DIR}/send_resp.c
+        )
 set(MAIN_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/server/cmd/main.c)
 
 find_library(EV_LIBRARY
@@ -26,7 +29,7 @@ find_library(EV_LIBRARY
 
 if (EV_LIBRARY)
     message(${EV_LIBRARY})
-endif()
+endif ()
 
 add_library(lib_log ${LIB_LOG_SRCS})
 target_include_directories(lib_log PRIVATE ${INCLUDE_DIRS})
@@ -46,5 +49,7 @@ target_link_libraries(web_server PRIVATE lib_http)
 target_link_libraries(web_server PRIVATE lib_sig_handler)
 target_link_libraries(web_server PRIVATE ${EV_LIBRARY})
 
+#TODO delete
+add_executable(test test.c)
 # DELETE
 #add_executable(test test.c)

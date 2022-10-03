@@ -65,11 +65,11 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
     get_http_response_cb(watcher->fd);
     close(watcher->fd);
-    ev_io_stop(EV_A_ watcher);
+    ev_io_stop(loop, watcher);
     free(watcher);
 }
 
-static void accept_cb(EV_P_ ev_io *watcher, int revents)
+static void accept_cb(struct ev_loop* loop, ev_io *watcher, int revents)
 {
     int client_fd;
     ev_io *client;
@@ -78,7 +78,7 @@ static void accept_cb(EV_P_ ev_io *watcher, int revents)
     if (client_fd > 0) {
         client = calloc(1, sizeof(*client));
         ev_io_init(client, read_cb, client_fd, EV_READ);
-        ev_io_start(EV_A_ client);
+        ev_io_start(loop, client);
 
     } else if ((client_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return;
@@ -86,7 +86,7 @@ static void accept_cb(EV_P_ ev_io *watcher, int revents)
     } else {
         fprintf(stdout, "errno %d\n", errno);
         close(watcher->fd);
-        ev_break(EV_A_ EVBREAK_ALL);
+        ev_break(loop, EVBREAK_ALL);
     }
 }
 

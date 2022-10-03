@@ -27,10 +27,6 @@ find_library(EV_LIBRARY
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libev
         )
 
-if (EV_LIBRARY)
-    message(${EV_LIBRARY})
-endif ()
-
 add_library(lib_log ${LIB_LOG_SRCS})
 target_include_directories(lib_log PRIVATE ${INCLUDE_DIRS})
 

@@ -1,17 +1,15 @@
 #include <string.h>
-#include <http.h>
 #include <sys/socket.h>
 #include <stdio.h>
 #include <sys/errno.h>
-#include <stdlib.h>
 #include <http_inner.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <sys/sendfile.h>
-#include <fcntl.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 
+
+char headers_template[] = "%s %d %s\r\nDate: %s\r\nServer: web\r\nContent-Length: %d\r\nContent-Type: %s\r\nConnection: %s\r\n\r\n";
 
 static const struct table_entry {
     const char *extension;
@@ -84,9 +82,8 @@ const char *get_answer_msg(int http_status_code) {
 }
 
 int send_http_response(int sock_fd, struct response_t *resp) {
-    char template[] = "%s %d %s\r\nDate: %s\r\nServer: web\r\nContent-Length: %d\r\nContent-Type: %s\r\nConnection: %s\r\n\r\n";
-    char buf[150] = {0};
-    sprintf(buf, template, HTTP1_0, resp->status_code, get_answer_msg(resp->status_code),
+    char buf[sizeof (headers_template) + HEADERS_VALUES_MAX_LEN] = {0};
+    sprintf(buf, headers_template, HTTP1_0, resp->status_code, get_answer_msg(resp->status_code),
             resp->date, resp->content_length, resp->content_type, "Closed");
 
     size_t left = strlen(buf);

@@ -12,13 +12,11 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <http.h>
-#include <limits.h>
-#include <stdlib.h>
 
 #define MAX_LEN_ROOT_PATH 100
 #define DEFAULT_CPU_LIMIT 4
 #define PORT 80
-#define DEFAULT_DOCUMENT_ROOT "/var/www/html"
+#define DEFAULT_DOCUMENT_ROOT "/home/ns/tp/hl/tests_for_web_server/"
 
 
 struct config_t {
@@ -73,23 +71,22 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 
 static void accept_cb(EV_P_ ev_io *watcher, int revents)
 {
-    int connfd;
+    int client_fd;
     ev_io *client;
-    connfd = accept(watcher->fd, NULL, NULL);
+    client_fd = accept(watcher->fd, NULL, NULL);
 
-    if (connfd > 0) {
+    if (client_fd > 0) {
         client = calloc(1, sizeof(*client));
-        ev_io_init(client, read_cb, connfd, EV_READ);
+        ev_io_init(client, read_cb, client_fd, EV_READ);
         ev_io_start(EV_A_ client);
 
-    } else if ((connfd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+    } else if ((client_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return;
 
     } else {
         fprintf(stdout, "errno %d\n", errno);
         close(watcher->fd);
         ev_break(EV_A_ EVBREAK_ALL);
-        /* this will lead main to exit, no need to free watchers of clients */
     }
 }
 

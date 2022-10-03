@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.10)
 project(web_server)
 
 set(CMAKE_C_FLAGS "-g -O0 -Wall -Wextra -Wno-unused-variable -Wpedantic -fprofile-arcs  -Wno-unknown-pragmas -Wno-sign-compare -Wwrite-strings -Wno-unused ")
@@ -48,8 +48,3 @@ target_link_libraries(web_server PRIVATE lib_log)
 target_link_libraries(web_server PRIVATE lib_http)
 target_link_libraries(web_server PRIVATE lib_sig_handler)
 target_link_libraries(web_server PRIVATE ${EV_LIBRARY})
-
-#TODO delete
-add_executable(test test.c)
-# DELETE
-#add_executable(test test.c)

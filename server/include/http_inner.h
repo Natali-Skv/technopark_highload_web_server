@@ -6,6 +6,7 @@
 #define HTTP_VERSION_MAX_LEN 10
 #define URL_MAX_LEN 990
 #define DATE_MAX_LEN 40
+#define HEADERS_VALUES_MAX_LEN 50
 
 #define GET "GET"
 #define HEAD "HEAD"

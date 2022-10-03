@@ -21,7 +21,6 @@ void get_http_response_cb(int sock_fd) {
 
     struct request_t req = {0};
     if (parse_http_request(raw_req, &req) != 0) {
-        err_log_code("Error parsing client request", errno);
         resp.status_code = BAD_REQUEST_CODE;
         send_http_response(sock_fd, &resp);
         return;

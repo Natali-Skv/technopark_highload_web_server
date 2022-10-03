@@ -5,7 +5,7 @@
 #define METHOD_MAX_LEN 10
 #define HTTP_VERSION_MAX_LEN 10
 #define URL_MAX_LEN 990
-#define DATE_MAX_LEN 30
+#define DATE_MAX_LEN 40
 
 #define GET "GET"
 #define HEAD "HEAD"
@@ -17,11 +17,13 @@
 #define NOT_FOUND_CODE 404
 #define FORBIDDEN_CODE 403
 #define METHOD_NOT_ALLOWED_CODE 405
+#define BAD_REQUEST_CODE 400
 
 #define OK_STATUS "OK"
 #define NOT_FOUND_STATUS "NOT FOUND"
 #define FORBIDDEN_STATUS "FORBIDDEN"
 #define METHOD_NOT_ALLOWED_STATUS "METHOD NOT ALLOWED"
+#define BAD_REQUEST_STATUS "BAD REQUEST"
 
 enum request_method_t {
     GET_T,
@@ -53,8 +55,7 @@ struct response_t {
 
 int decode_url(char *url);
 int parse_http_request(char *raw_req, struct request_t *req);
-int read_http_request(int socket_fd, char *req, size_t max_req_len);
-int get_static_fd(char *file_path);
+void read_http_request(int socket_fd, char *req, size_t max_req_len);
 size_t get_content_length(int fd);
 const char *get_content_type(char *filename);
 void set_date(char * date_dst);

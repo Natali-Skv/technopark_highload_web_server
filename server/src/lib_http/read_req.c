@@ -31,72 +31,59 @@ static enum http_version_t get_request_http_version(char *http_version) {
 }
 
 static char hex_to_decimal_digit(char hex_code) {
-    if (hex_code<='9' && hex_code>= '0') {
-        return hex_code - '0';
+    if (hex_code <= '9' && hex_code >= '0') {
+        return (char) (hex_code - '0');
     }
-    if (hex_code<='f' && hex_code>= 'a') {
-        return hex_code - 'a' + 10;
+    if (hex_code <= 'f' && hex_code >= 'a') {
+        return (char) (hex_code - 'a' + 10);
     }
-    if (hex_code<='F' && hex_code>= 'A') {
-        return hex_code - 'A' + 10;
+    if (hex_code <= 'F' && hex_code >= 'A') {
+        return (char) (hex_code - 'A' + 10);
     }
     return 0;
 }
 
 int decode_url(char *url) {
-    char *end_decoded = url; // конец проверенного урла
-    char *begin_encoded = url; // начало непроверенного урла
-    size_t url_len = strlen(url);
-    char *percent_pos = strchr(url, '%');
+    size_t url_encoded_len = strlen(url) + 1;
+    char url_encoded[url_encoded_len + 1];
+    strncpy(url_encoded, url, url_encoded_len);
+    char *end_decoded = url;
+    char *begin_encoded = url_encoded;
+    char *percent_pos = strchr(url_encoded, '%');
     while (percent_pos != NULL) {
-        if (percent_pos - url + 3 > url_len) {
+        if (percent_pos - url_encoded + 3 > url_encoded_len) {
             url[0] = '\0';
             return -1;
         }
-        percent_pos[0] = hex_to_decimal_digit(percent_pos[1] )*16 + hex_to_decimal_digit(percent_pos[2]);
+        *percent_pos = (char) (hex_to_decimal_digit(percent_pos[1]) * (char) 16 + hex_to_decimal_digit(percent_pos[2]));
         strncpy(end_decoded, begin_encoded, percent_pos - begin_encoded + 1);
         end_decoded += percent_pos - begin_encoded + 1;
         begin_encoded = percent_pos + 3;
         percent_pos = strchr(begin_encoded, '%');
     }
-    strncpy(end_decoded, begin_encoded, url_len - (begin_encoded - url));
-    end_decoded[url_len - (begin_encoded - url)] = '\0';
+    strcpy(end_decoded, begin_encoded );
+    end_decoded[url_encoded_len - (begin_encoded - url)] = '\0';
     return 0;
 }
-
 
 int parse_http_request(char *raw_req, struct request_t *req) {
     char method[METHOD_MAX_LEN];
-    printf("%d\n",__LINE__);
     char http_version[HTTP_VERSION_MAX_LEN];
-    printf("%d\n",__LINE__);
     if (sscanf(raw_req, "%s %s %s\n", method, req->url, http_version) != 3) {
-        printf("%d\n",__LINE__);
         return -1;
     }
-    printf("%d\n",__LINE__);
     req->method = get_request_method(method);
-    printf("%d\n",__LINE__);
     req->version = get_request_http_version(http_version);
-    printf("%d\n",__LINE__);
+    char *query_param_pos = strstr(req->url, "?");
+    if (query_param_pos != NULL) {
+        *query_param_pos = '\0';
+    }
     return 0;
 }
 
-int read_http_request(int socket_fd, char *req, size_t max_req_len) {
-    int recvd = 0;
-    int curr_recrd = 0;
-    while (recvd < max_req_len && (strstr(req, "\r\n") == NULL)) {
-        curr_recrd = recv(socket_fd, req + recvd, max_req_len - recvd, MSG_DONTWAIT);
-        if (curr_recrd <= 0) {
-            req[0] = '\0';
-            return -1;
-        }
-        recvd += curr_recrd;
+void read_http_request(int socket_fd, char *req, size_t max_req_len) {
+    int rcvd = 0;
+    for (int rvd = 1; (rvd > 0) && (req[rcvd] != '\n'); rcvd += rvd) {
+        rvd = recv(socket_fd, req + rcvd, max_req_len - 1, MSG_DONTWAIT);
     }
-    if (strstr(req, "\r\n") == NULL) {
-        req[0] = '\0';
-        return -1;
-    }
-
-    return 0;
 }

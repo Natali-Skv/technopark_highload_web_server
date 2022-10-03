@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <http.h>
+#include <limits.h>
+#include <stdlib.h>
 
 #define MAX_LEN_ROOT_PATH 100
 #define DEFAULT_CPU_LIMIT 4
@@ -61,74 +63,87 @@ int set_socket(int port, int *sock_fd) {
     return 0;
 }
 
-
-//static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
-//    char buffer[50];
-//    ssize_t read;
-//
-//    if (EV_ERROR & revents) {
-//        perror("got invalid event");
-//        return;
-//    }
-//
-//    // Receive message from client socket
-//    read = recv(watcher->fd, buffer, 50, 0);
-//
-//    if (read < 0) {
-//        perror("read error");
-//        return;
-//    }
-//
-//    if (read == 0) {
-//        // Stop and free watchet if client socket is closing
-//        ev_io_stop(loop, watcher);
-//        free(watcher);
-//        perror("peer might closing");
-//        return;
-//    } else {
-//        printf("message:%s", buffer);
-//    }
-//
-//    // Send message bach to the client
-//    /* send(watcher->fd, buffer, read, 0); */
-//    bzero(buffer, read);
-////    http_cb(watcher->fd, cfg->root);
-////    close(watcher->fd);
-////    ev_io_stop(EV_A_ watcher);
-////    free(watcher);
-//}
-
 static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
+    printf("---PROCESSING REQUEST----");
     get_http_response_cb(watcher->fd);
+    printf("---END PROCESSING REQUEST----");
+    printf(" %d\n",__LINE__);
+//    http_cb(watcher->fd, "/home/ns/tp/hl/tests_for_web_server/" );
     close(watcher->fd);
+    printf(" %d\n",__LINE__);
     ev_io_stop(EV_A_ watcher);
+    printf(" %d\n",__LINE__);
     free(watcher);
+    printf(" %d\n",__LINE__);
 }
 
-static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
-    int conn_fd = accept(watcher->fd, NULL, NULL);
+static void accept_cb(EV_P_ ev_io *watcher, int revents)
+{
+    printf(" %d\n",__LINE__);
+    int connfd;
+    ev_io *client;
+    printf(" %d\n",__LINE__);
+    connfd = accept(watcher->fd, NULL, NULL);
 
-    if (conn_fd > 0) {
-        // TODO: возможно стоит раскоментить -- установить таймаут на отправку данных для текущего клиента
-//        struct timeval timeout;
-//        timeout.tv_sec = 60;
-//        timeout.tv_usec = 0;
-//        if (setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) == -1) {
-//            close(conn_fd);
-//            int err_code = errno;
-//            err_log_code("error setting options on socket", err_code);
-//            return;
-//        }
-        ev_io *client_watcher = calloc(1, sizeof(*client_watcher));
-        ev_io_init(client_watcher, read_cb, conn_fd, EV_READ);
-        ev_io_start(EV_A_ client_watcher);
-    } else if ((conn_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+    printf(" %d\n",__LINE__);
+    if (connfd > 0) {
+        printf(" %d\n",__LINE__);
+        printf(" %d\n",__LINE__);
+        client = calloc(1, sizeof(*client));
+        printf(" %d\n",__LINE__);
+        ev_io_init(client, read_cb, connfd, EV_READ);
+        printf(" %d\n",__LINE__);
+        ev_io_start(EV_A_ client);
+
+        printf(" %d\n",__LINE__);
+    } else if ((connfd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        printf(" %d\n",__LINE__);
         return;
+
     } else {
-        err_log_code("error accepting connection", errno);
+        printf(" %d\n",__LINE__);
+        fprintf(stdout, "errno %d\n", errno);
+        printf(" %d\n",__LINE__);
+        close(watcher->fd);
+        printf(" %d\n",__LINE__);
+        ev_break(EV_A_ EVBREAK_ALL);
+        /* this will lead main to exit, no need to free watchers of clients */
     }
+    printf(" %d\n",__LINE__);
 }
+
+//static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
+//    printf(" %d\n",__LINE__);
+//    int conn_fd = accept(watcher->fd, NULL, NULL);
+//
+//    printf(" %d\n",__LINE__);
+//    if (conn_fd > 0) {
+//        printf(" %d\n",__LINE__);
+//        // TODO: возможно стоит раскоментить -- установить таймаут на отправку данных для текущего клиента
+////        struct timeval timeout;
+////        timeout.tv_sec = 60;
+////        timeout.tv_usec = 0;
+////        if (setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) == -1) {
+////            close(conn_fd);
+////            int err_code = errno;
+////            err_log_code("error setting options on socket", err_code);
+////            return;
+////        }
+//        ev_io *client_watcher = calloc(1, sizeof(*client_watcher));
+//        printf(" %d\n",__LINE__);
+//        ev_io_init(client_watcher, read_cb, conn_fd, EV_READ);
+//        printf(" %d\n",__LINE__);
+//        ev_io_start(EV_A_ client_watcher);
+//        printf(" %d\n",__LINE__);
+//    } else if ((conn_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+//        printf(" %d\n",__LINE__);
+//        return;
+//    } else {
+//        printf(" %d\n",__LINE__);
+//        err_log_code("error accepting connection", errno);
+//    }
+//}
 
 int run_server(int cpu_limit, int sock_fd) {
     signal(SIGCHLD, worker_exit_handler_job);
@@ -199,7 +214,6 @@ int set_config(int argc, char *argv[], struct config_t *cfg) {
             case 0: {
                 printf("long option %s", options[opt_idx].name);
                 if (optarg) { printf(" with arg %s", optarg); }
-                printf("\n");
                 return -1;
             }
             case 1: {
@@ -224,7 +238,7 @@ int set_config(int argc, char *argv[], struct config_t *cfg) {
                     printf("root document path must have [1..50] symbols\n");
                     return -1;
                 }
-                strncpy(cfg->document_root, optarg, optarg_len);
+                strncpy(cfg->document_root, optarg, sizeof(cfg->document_root));
                 break;
             }
             case 'h': {

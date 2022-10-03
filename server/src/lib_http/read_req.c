@@ -1,10 +1,6 @@
 #include <string.h>
-#include <http.h>
 #include <sys/socket.h>
-#include <logger.h>
 #include <stdio.h>
-#include <sys/errno.h>
-#include <stdlib.h>
 #include <http_inner.h>
 
 static enum request_method_t get_request_method(char *method) {

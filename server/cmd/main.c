@@ -65,85 +65,33 @@ int set_socket(int port, int *sock_fd) {
 
 static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
-    printf("---PROCESSING REQUEST----");
     get_http_response_cb(watcher->fd);
-    printf("---END PROCESSING REQUEST----");
-    printf(" %d\n",__LINE__);
-//    http_cb(watcher->fd, "/home/ns/tp/hl/tests_for_web_server/" );
     close(watcher->fd);
-    printf(" %d\n",__LINE__);
     ev_io_stop(EV_A_ watcher);
-    printf(" %d\n",__LINE__);
     free(watcher);
-    printf(" %d\n",__LINE__);
 }
 
 static void accept_cb(EV_P_ ev_io *watcher, int revents)
 {
-    printf(" %d\n",__LINE__);
     int connfd;
     ev_io *client;
-    printf(" %d\n",__LINE__);
     connfd = accept(watcher->fd, NULL, NULL);
 
-    printf(" %d\n",__LINE__);
     if (connfd > 0) {
-        printf(" %d\n",__LINE__);
-        printf(" %d\n",__LINE__);
         client = calloc(1, sizeof(*client));
-        printf(" %d\n",__LINE__);
         ev_io_init(client, read_cb, connfd, EV_READ);
-        printf(" %d\n",__LINE__);
         ev_io_start(EV_A_ client);
 
-        printf(" %d\n",__LINE__);
     } else if ((connfd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        printf(" %d\n",__LINE__);
         return;
 
     } else {
-        printf(" %d\n",__LINE__);
         fprintf(stdout, "errno %d\n", errno);
-        printf(" %d\n",__LINE__);
         close(watcher->fd);
-        printf(" %d\n",__LINE__);
         ev_break(EV_A_ EVBREAK_ALL);
         /* this will lead main to exit, no need to free watchers of clients */
     }
-    printf(" %d\n",__LINE__);
 }
-
-//static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
-//    printf(" %d\n",__LINE__);
-//    int conn_fd = accept(watcher->fd, NULL, NULL);
-//
-//    printf(" %d\n",__LINE__);
-//    if (conn_fd > 0) {
-//        printf(" %d\n",__LINE__);
-//        // TODO: возможно стоит раскоментить -- установить таймаут на отправку данных для текущего клиента
-////        struct timeval timeout;
-////        timeout.tv_sec = 60;
-////        timeout.tv_usec = 0;
-////        if (setsockopt(conn_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) == -1) {
-////            close(conn_fd);
-////            int err_code = errno;
-////            err_log_code("error setting options on socket", err_code);
-////            return;
-////        }
-//        ev_io *client_watcher = calloc(1, sizeof(*client_watcher));
-//        printf(" %d\n",__LINE__);
-//        ev_io_init(client_watcher, read_cb, conn_fd, EV_READ);
-//        printf(" %d\n",__LINE__);
-//        ev_io_start(EV_A_ client_watcher);
-//        printf(" %d\n",__LINE__);
-//    } else if ((conn_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-//        printf(" %d\n",__LINE__);
-//        return;
-//    } else {
-//        printf(" %d\n",__LINE__);
-//        err_log_code("error accepting connection", errno);
-//    }
-//}
 
 int run_server(int cpu_limit, int sock_fd) {
     signal(SIGCHLD, worker_exit_handler_job);
@@ -192,13 +140,6 @@ int run_server(int cpu_limit, int sock_fd) {
     }
     return 0;
 }
-
-// раздел \r\n переводом lib_http-запросов/ ответов
-// сокет клиента может закрыться до того или во время того, как сервер будет отправлять ответ
-// сделать shut_down socket завершением процесса
-// добавить в массив пиды?? нужно ли иметь массив пидов процессов?
-// ? нужно удалять зомби ? они вообще появятся? вроде нет
-// нужен 1 родительский процесс, а воркеров -- кол-во из конфига -1 ?
 
 int set_config(int argc, char *argv[], struct config_t *cfg) {
 

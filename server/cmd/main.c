@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <http.h>
+#include <fcntl.h>
 
 #define MAX_LEN_ROOT_PATH 100
 #define DEFAULT_CPU_LIMIT 4
@@ -23,6 +24,12 @@ struct config_t {
     int port;
     int cpu_limit;
     char document_root[MAX_LEN_ROOT_PATH];
+};
+
+struct client {
+    ev_io io;
+    int socket;
+    // инфа про данные для отправки ответа
 };
 
 int set_socket(int port, int *sock_fd) {
@@ -61,12 +68,54 @@ int set_socket(int port, int *sock_fd) {
     return 0;
 }
 
-static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
+static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
-    get_http_response_cb(watcher->fd);
+    printf("\nOOOOOOOOOOOOO\n");
+    struct response_t *resp = (struct response_t *) watcher->data;
+    int send_res = send_http_response_cb(watcher->fd,resp);
+    if (send_res == SOCK_DOESNT_READY_FOR_WRITE) {
+        return;
+    }
+    if (send_res == SOCK_ERR) {
+        err_log_code("error sending response to socket",errno);
+    }
+    if (resp->body_fd > 0) {
+        close(resp->body_fd);
+    }
     close(watcher->fd);
     ev_io_stop(loop, watcher);
     free(watcher);
+}
+
+static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
+{
+//    printf("    read\n");
+    printf("%d\n",__LINE__);
+    struct response_t resp = {0};
+    int resp_res = get_http_response_cb(watcher->fd, &resp);
+
+    printf("%d\n",__LINE__);
+    if (resp_res == SOCK_DOESNT_READY_FOR_WRITE) {
+        printf("%d\n",__LINE__);
+        printf("    %d\n",resp_res);
+        watcher->data = &resp;
+        ev_io_init(watcher, write_cb, watcher->fd, EV_WRITE);
+        ev_io_start(loop, watcher); // TODO: непонятно, нужна эта строка или нет
+        printf("%d\n",__LINE__);
+        return;
+    }
+
+    printf("%d\n",__LINE__);
+    if (resp.body_fd > 0) {
+        close(resp.body_fd);
+    }
+    printf("%d\n",__LINE__);
+    close(watcher->fd);
+    ev_io_stop(loop, watcher);
+    free(watcher);
+    printf("%d\n",__LINE__);
+// сделать сокет с таймаутом для пользователя
+// повесить ev_timeout
 }
 
 static void accept_cb(struct ev_loop* loop, ev_io *watcher, int revents)
@@ -76,14 +125,19 @@ static void accept_cb(struct ev_loop* loop, ev_io *watcher, int revents)
     client_fd = accept(watcher->fd, NULL, NULL);
 
     if (client_fd > 0) {
+        printf("%d\n",__LINE__);
+        fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
         client = calloc(1, sizeof(*client));
+//        printf("begin\n");
         ev_io_init(client, read_cb, client_fd, EV_READ);
         ev_io_start(loop, client);
-
+        printf("%d\n",__LINE__);
+//        printf("end\n");
     } else if ((client_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return;
 
     } else {
+//        TODO тут было errno 24 , 22
         fprintf(stdout, "errno %d\n", errno);
         close(watcher->fd);
         ev_break(loop, EVBREAK_ALL);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(web_server)
 
-set(CMAKE_C_FLAGS "-g -O0 -Wall -Wextra -Wno-unused-variable -Wpedantic -fprofile-arcs  -Wno-unknown-pragmas -Wno-sign-compare -Wwrite-strings -Wno-unused ")
+set(CMAKE_C_FLAGS "-g -O0 -Wall -Wextra -Wno-unused-variable -Wpedantic -Wno-unknown-pragmas -Wno-sign-compare -Wwrite-strings -Wno-unused ")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDART_REQURED ON)
 

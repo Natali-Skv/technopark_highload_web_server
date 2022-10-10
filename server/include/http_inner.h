@@ -1,12 +1,12 @@
 #ifndef WEB_SERVER_HTTP_INNER_H
 #define WEB_SERVER_HTTP_INNER_H
 
+#include <http.h>
+
 #define MAX_REQUEST_LEN 1000
 #define METHOD_MAX_LEN 10
 #define HTTP_VERSION_MAX_LEN 10
 #define URL_MAX_LEN 990
-#define DATE_MAX_LEN 40
-#define HEADERS_VALUES_MAX_LEN 50
 
 #define GET "GET"
 #define HEAD "HEAD"
@@ -26,12 +26,6 @@
 #define METHOD_NOT_ALLOWED_STATUS "METHOD NOT ALLOWED"
 #define BAD_REQUEST_STATUS "BAD REQUEST"
 
-enum request_method_t {
-    GET_T,
-    HEAD_T,
-    METHOD_NOT_ALLOWED_T,
-};
-
 enum http_version_t {
     HTTP1_0_T,
     HTTP1_1_T,
@@ -40,19 +34,11 @@ enum http_version_t {
 };
 
 struct request_t {
-    enum request_method_t method;
+    enum request_method_t meth;
     enum http_version_t version;
     char url[URL_MAX_LEN];
 };
 
-struct response_t {
-    int status_code;
-    size_t content_length;
-    int body_fd;
-    const char * content_type;
-    char date [DATE_MAX_LEN];
-    enum request_method_t method;
-};
 
 int decode_url(char *url);
 int parse_http_request(char *raw_req, struct request_t *req);

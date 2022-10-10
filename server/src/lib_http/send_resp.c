@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <sys/errno.h>
 #include <http_inner.h>
+#include <http.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <sys/sendfile.h>
@@ -81,33 +82,56 @@ const char *get_answer_msg(int http_status_code) {
     return "";
 }
 
-int send_http_response(int sock_fd, struct response_t *resp) {
-    char buf[sizeof (headers_template) + HEADERS_VALUES_MAX_LEN] = {0};
-    sprintf(buf, headers_template, HTTP1_0, resp->status_code, get_answer_msg(resp->status_code),
+// если сокет не готов к записи, то возвращаем SOCK_DOESNT ...
+//
+int send_http_response(int sock_fd, struct response_t *resp ) {
+    sprintf(resp->header_raw, headers_template, HTTP1_0, resp->status_code, get_answer_msg(resp->status_code),
             resp->date, resp->content_length, resp->content_type, "Closed");
 
-    size_t left = strlen(buf);
-    size_t sent = 0;
-    while (sent < left) {
-        long snt = send(sock_fd, buf + sent, strlen(buf) - sent, 0);
-        if (snt == -1) {
-            return -1;
+    size_t header_len = strlen(resp->header_raw);
+    ssize_t curr_sent = 0;
+    while (resp->headers_offset < header_len) {
+        curr_sent = send(sock_fd, resp->header_raw + resp->headers_offset, header_len - resp->headers_offset, 0 );
+        if (curr_sent == -1) {
+            return errno==EAGAIN?SOCK_DOESNT_READY_FOR_WRITE:SOCK_ERR;
         }
-        sent += snt;
+        resp->headers_offset += curr_sent;
     }
     if (resp->status_code != OK_CODE || resp->method == HEAD_T) {
-        return 0;
+        return OK;
     }
 
-    sent = 0;
-    off_t offset = 0;
-    while (sent < resp->content_length) {
-        size_t res = sendfile(sock_fd, resp->body_fd, &offset, resp->content_length);
-        if (res == -1 && errno != EAGAIN) {
-            return -1;
+    while (resp->body_sent < resp->content_length) {
+        curr_sent = sendfile(sock_fd, resp->body_fd, &resp->body_offset, resp->content_length );
+        if (curr_sent == -1) {
+            return errno==EAGAIN?SOCK_DOESNT_READY_FOR_WRITE:SOCK_ERR;
         }
-        sent += res;
+        resp->body_sent += curr_sent;
     }
-    return 0;
+    return OK;
+}
+
+int send_http_response_cb(int sock_fd, struct response_t *resp ) {
+   size_t header_len = strlen(resp->header_raw);
+    ssize_t curr_sent = 0;
+    while (resp->headers_offset < header_len) {
+        curr_sent = send(sock_fd, resp->header_raw + resp->headers_offset, header_len - resp->headers_offset, 0 );
+        if (curr_sent == -1) {
+            return errno==EAGAIN?SOCK_DOESNT_READY_FOR_WRITE:SOCK_ERR;
+        }
+        resp->headers_offset += curr_sent;
+    }
+    if (resp->status_code != OK_CODE || resp->method == HEAD_T) {
+        return OK;
+    }
+
+    while (resp->body_sent < resp->content_length) {
+        curr_sent = sendfile(sock_fd, resp->body_fd, &resp->body_offset, resp->content_length );
+        if (curr_sent == -1) {
+            return errno==EAGAIN?SOCK_DOESNT_READY_FOR_WRITE:SOCK_ERR;
+        }
+        resp->body_sent += curr_sent;
+    }
+    return OK;
 }
 

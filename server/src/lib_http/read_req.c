@@ -68,7 +68,7 @@ int parse_http_request(char *raw_req, struct request_t *req) {
     if (sscanf(raw_req, "%s %s %s\n", method, req->url, http_version) != 3) {
         return -1;
     }
-    req->method = get_request_method(method);
+    req->meth = get_request_method(method);
     req->version = get_request_http_version(http_version);
     char *query_param_pos = strstr(req->url, "?");
     if (query_param_pos != NULL) {

@@ -58,6 +58,7 @@ int set_socket(int port, int *sock_fd) {
         err_log_code("error binding socket", err_code);
         return err_code;
     }
+    fcntl(listener, F_SETFL, fcntl(listener, F_GETFL, 0) | O_NONBLOCK);
 
     if (listen(listener, INT_MAX) < 0) {
         int err_code = errno;
@@ -65,12 +66,12 @@ int set_socket(int port, int *sock_fd) {
         return err_code;
     }
     *sock_fd = listener;
+    fcntl(listener, F_SETFL, fcntl(listener, F_GETFL, 0) | O_NONBLOCK);
     return 0;
 }
 
 static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
-    printf("\nOOOOOOOOOOOOO\n");
     struct response_t *resp = (struct response_t *) watcher->data;
     int send_res = send_http_response_cb(watcher->fd,resp);
     if (send_res == SOCK_DOESNT_READY_FOR_WRITE) {
@@ -90,30 +91,23 @@ static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
 //    printf("    read\n");
-    printf("%d\n",__LINE__);
     struct response_t resp = {0};
     int resp_res = get_http_response_cb(watcher->fd, &resp);
 
-    printf("%d\n",__LINE__);
     if (resp_res == SOCK_DOESNT_READY_FOR_WRITE) {
-        printf("%d\n",__LINE__);
         printf("    %d\n",resp_res);
         watcher->data = &resp;
         ev_io_init(watcher, write_cb, watcher->fd, EV_WRITE);
         ev_io_start(loop, watcher); // TODO: непонятно, нужна эта строка или нет
-        printf("%d\n",__LINE__);
         return;
     }
 
-    printf("%d\n",__LINE__);
     if (resp.body_fd > 0) {
         close(resp.body_fd);
     }
-    printf("%d\n",__LINE__);
     close(watcher->fd);
     ev_io_stop(loop, watcher);
     free(watcher);
-    printf("%d\n",__LINE__);
 // сделать сокет с таймаутом для пользователя
 // повесить ev_timeout
 }
@@ -125,13 +119,11 @@ static void accept_cb(struct ev_loop* loop, ev_io *watcher, int revents)
     client_fd = accept(watcher->fd, NULL, NULL);
 
     if (client_fd > 0) {
-        printf("%d\n",__LINE__);
         fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
         client = calloc(1, sizeof(*client));
 //        printf("begin\n");
         ev_io_init(client, read_cb, client_fd, EV_READ);
         ev_io_start(loop, client);
-        printf("%d\n",__LINE__);
 //        printf("end\n");
     } else if ((client_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return;
@@ -148,7 +140,7 @@ int run_server(int cpu_limit, int sock_fd) {
     signal(SIGCHLD, worker_exit_handler_job);
     signal(SIGUSR1, all_workers_killed_job);
     signal(SIGPIPE, SIG_IGN);
-    struct ev_loop *loop = ev_default_loop(EVBACKEND_EPOLL);
+    struct ev_loop *loop = ev_default_loop(EVBACKEND_EPOLL | EVFLAG_FORKCHECK);
     if (loop == NULL) {
         int err_code = errno;
         err_log_code("error creating default event loop", err_code);
@@ -174,7 +166,6 @@ int run_server(int cpu_limit, int sock_fd) {
             }
             ev_io_init(watcher, accept_cb, sock_fd, EV_READ);
             ev_io_start(loop, watcher);
-            ev_loop_fork(loop);
             ev_run(loop, 0);
             num_process_to_fork--;
             ev_loop_destroy(loop);

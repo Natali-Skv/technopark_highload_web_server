@@ -21,10 +21,8 @@ set(MAIN_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/server/cmd/main.c)
 find_library(EV_LIBRARY
         NAMES libev ev evlib libev_static libev.so
         PATHS /usr/local/lib
-        ${CMAKE_CURRENT_SOURCE_DIR}/libev
         /usr/lib
         ${PROJECT_BINARY_DIR}/lib
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libev
         )
 
 add_library(lib_log ${LIB_LOG_SRCS})

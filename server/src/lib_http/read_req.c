@@ -78,8 +78,8 @@ int parse_http_request(char *raw_req, struct request_t *req) {
 }
 
 void read_http_request(int socket_fd, char *req, size_t max_req_len) {
-    int rcvd = 0;
-    for (int rvd = 1; (rvd > 0) && (req[rcvd] != '\n'); rcvd += rvd) {
-        rvd = recv(socket_fd, req + rcvd, max_req_len - 1, MSG_DONTWAIT);
+    ssize_t rcvd = 0;
+    for (ssize_t rvd = 1; (rvd > 0) && (req[rcvd] != '\n'); rcvd += rvd) {
+        rvd = recv(socket_fd, req + rcvd, max_req_len - 1, 0);
     }
 }

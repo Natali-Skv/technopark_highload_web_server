@@ -19,17 +19,15 @@
 #define PORT 80
 #define DEFAULT_DOCUMENT_ROOT "/home/ns/tp/hl/tests_for_web_server/"
 
-
 struct config_t {
     int port;
     int cpu_limit;
     char document_root[MAX_LEN_ROOT_PATH];
 };
 
-struct client {
+struct w_client_t {
     ev_io io;
-    int socket;
-    // инфа про данные для отправки ответа
+    struct response_t * resp;
 };
 
 int set_socket(int port, int *sock_fd) {
@@ -66,23 +64,36 @@ int set_socket(int port, int *sock_fd) {
         return err_code;
     }
     *sock_fd = listener;
-    fcntl(listener, F_SETFL, fcntl(listener, F_GETFL, 0) | O_NONBLOCK);
     return 0;
 }
 
 static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
+    printf("!!! %d\n",__LINE__);
+    fflush(stdout);
+//    наверное вот тут происходит что-то, так как докер уже пожаловался, значит он сюда заходит
+//    printf("write_cb\n");
     struct response_t *resp = (struct response_t *) watcher->data;
+    printf("!!! %s\n",resp->header_raw);
+    fflush(stdout);
     int send_res = send_http_response_cb(watcher->fd,resp);
+    printf("%d\n",__LINE__);
+    fflush(stdout);
     if (send_res == SOCK_DOESNT_READY_FOR_WRITE) {
         return;
     }
+    printf("%d\n",__LINE__);
+    fflush(stdout);
     if (send_res == SOCK_ERR) {
         err_log_code("error sending response to socket",errno);
     }
+    printf("%d\n",__LINE__);
+    fflush(stdout);
     if (resp->body_fd > 0) {
         close(resp->body_fd);
     }
+    printf("!!! %d\n",__LINE__);
+    fflush(stdout);
     close(watcher->fd);
     ev_io_stop(loop, watcher);
     free(watcher);
@@ -91,21 +102,47 @@ static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 {
 //    printf("    read\n");
-    struct response_t resp = {0};
-    int resp_res = get_http_response_cb(watcher->fd, &resp);
+    struct response_t* resp = calloc(1,sizeof(*resp));
+    int resp_res = get_http_response_cb(watcher->fd, resp);
 
     if (resp_res == SOCK_DOESNT_READY_FOR_WRITE) {
-        printf("    %d\n",resp_res);
-        watcher->data = &resp;
-        ev_io_init(watcher, write_cb, watcher->fd, EV_WRITE);
-        ev_io_start(loop, watcher); // TODO: непонятно, нужна эта строка или нет
-        return;
+        struct ev_io *w_client = calloc(1, sizeof(*w_client));
+        w_client->data = resp;
+        ev_io_init(w_client, write_cb, watcher->fd, EV_WRITE);
+        printf("%d\n",__LINE__);
+        fflush(stdout);
+        ev_io_start(loop, w_client);
+
+//        struct w_client_t *w_client = calloc(1, sizeof(*w_client));
+//        w_client->resp = resp;
+//        ev_io_init(&(w_client->io), write_cb, watcher->fd, EV_WRITE);
+//        printf("%d\n",__LINE__);
+//        fflush(stdout);
+//        ev_io_start(loop, &(w_client->io));
+
+//        printf("%d\n",__LINE__);
+//        fflush(stdout);
+//        printf("    %d\n",resp_res);
+//        fflush(stdout);
+//        watcher->data = &resp;
+//        printf("%d\n",__LINE__);
+//        fflush(stdout);
+//        ev_io_init(watcher, write_cb, watcher->fd, EV_WRITE );
+//        printf("%d\n",__LINE__);
+//        fflush(stdout);
+//        ev_io_
+////        ev_io_start(loop, watcher); // TODO: непонятно, нужна эта строка или нет
+//        printf("%d\n",__LINE__);
+//        fflush(stdout);
     }
 
-    if (resp.body_fd > 0) {
-        close(resp.body_fd);
+    if (resp_res == OK) {
+        if (resp->body_fd > 0) {
+            close(resp->body_fd);
+        }
+        close(watcher->fd);
     }
-    close(watcher->fd);
+
     ev_io_stop(loop, watcher);
     free(watcher);
 // сделать сокет с таймаутом для пользователя
@@ -114,26 +151,40 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
 
 static void accept_cb(struct ev_loop* loop, ev_io *watcher, int revents)
 {
+    printf("%d\n",__LINE__);
+    fflush(stdout);
     int client_fd;
     ev_io *client;
     client_fd = accept(watcher->fd, NULL, NULL);
 
+    printf("%d\n",__LINE__);
+    fflush(stdout);
     if (client_fd > 0) {
+        printf("%d\n",__LINE__);
+        fflush(stdout);
         fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
         client = calloc(1, sizeof(*client));
-//        printf("begin\n");
         ev_io_init(client, read_cb, client_fd, EV_READ);
+        printf("%d\n",__LINE__);
+        fflush(stdout);
         ev_io_start(loop, client);
-//        printf("end\n");
+        printf("%d\n",__LINE__);
+        fflush(stdout);
     } else if ((client_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        printf("%d\n",__LINE__);
+        fflush(stdout);
         return;
 
     } else {
+        printf("%d\n",__LINE__);
+        fflush(stdout);
 //        TODO тут было errno 24 , 22
         fprintf(stdout, "errno %d\n", errno);
         close(watcher->fd);
         ev_break(loop, EVBREAK_ALL);
     }
+    printf("%d\n",__LINE__);
+    fflush(stdout);
 }
 
 int run_server(int cpu_limit, int sock_fd) {
@@ -262,7 +313,11 @@ void set_config_default_values(struct config_t *cfg) {
 }
 
 int main(int argc, char *argv[]) {
+    fflush(stdout);
+    printf("!!!!\n");
     init_logger();
+    fflush(stdout);
+    err_log("!!!!!");
 
     struct config_t cfg = {0};
     if (set_config(argc, argv, &cfg) != 0) {

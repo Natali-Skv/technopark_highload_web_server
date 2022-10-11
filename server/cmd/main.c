@@ -1,49 +1,101 @@
+#include <errno.h>
+#include <ev.h>
+#include <fcntl.h>
+#include <http.h>
+#include <limits.h>
+#include <logger.h>
+#include <netinet/in.h>
+#include <server.h>
+#include <set_config.h>
+#include <sig_handler.h>
+#include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <signal.h>
-#include <sig_handler.h>
-#include <logger.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <ev.h>
-#include <limits.h>
-#include <stdbool.h>
-#include <getopt.h>
-#include <http.h>
-#include <fcntl.h>
+#include <sys/time.h>
+#include <unistd.h>
 
-#define MAX_LEN_ROOT_PATH 100
-#define DEFAULT_CPU_LIMIT 4
-#define PORT 80
-#define DEFAULT_DOCUMENT_ROOT "/home/ns/tp/hl/tests_for_web_server/"
-
-struct config_t {
-    int port;
-    int cpu_limit;
-    char document_root[MAX_LEN_ROOT_PATH];
-};
+#define CREATING_SOCKET_ERR (-1)
+#define SET_SOCK_OPT_ERR (-2)
+#define BINDING_SOCKET_ERR (-3)
+#define LISTENING_SOCKET_ERR (-4)
+#define CREATING_EVLOOP_ERR (-5)
+#define FORKING_ERR (-6)
 
 struct w_client_t {
     ev_io io;
-    struct response_t * resp;
+    struct response_t *resp;
 };
 
+int set_socket(int port, int *sock_fd);
+int run_server(int cpu_limit, int sock_fd);
+
+int main(int argc, char *argv[]) {
+    struct config_t cfg = {0};
+    if (set_config(argc, argv, &cfg) != OK) {
+        return 0;
+    }
+    set_config_default_values(&cfg);
+
+    int init_logger_res = init_logger(cfg.server_log_path, cfg.access_log_path);
+    if (init_logger_res == OPENING_SERVER_LOG_FILE_ERR) {
+        printf("error opening server log file: %s", strerror(errno));
+        return 0;
+    }
+    if (init_logger_res == OPENING_ACCESS_LOG_FILE_ERR) {
+        printf("error opening access log file: %s", strerror(errno));
+        return 0;
+    }
+
+    if (init_document_root(cfg.document_root) == UNRESOLVING_ROOT_PATH) {
+        printf("error resolving root path: %s", strerror(errno));
+        destruct_logger();
+        return 0;
+    }
+
+    int sock_fd = -1;
+    int set_socket_res = set_socket(cfg.port, &sock_fd);
+    if (set_socket_res == CREATING_SOCKET_ERR) {
+        printf("error creating socket: %s", strerror(errno));
+        destruct_logger();
+        return 0;
+    } else if (set_socket_res == SET_SOCK_OPT_ERR) {
+        printf("error setting socket options: %s", strerror(errno));
+        destruct_logger();
+        return 0;
+    } else if (set_socket_res == BINDING_SOCKET_ERR) {
+        printf("error bilding socket: %s", strerror(errno));
+        destruct_logger();
+        return 0;
+    } else if (set_socket_res == LISTENING_SOCKET_ERR) {
+        printf("error listening socket: %s", strerror(errno));
+        destruct_logger();
+        return 0;
+    }
+
+    init_sig_handler(sock_fd);
+
+    info_log("starting server with cpu limit: %d, document root: %s\n", cfg.cpu_limit, cfg.document_root);
+    if (run_server(cfg.cpu_limit, sock_fd) != 0) {
+        destruct_logger();
+        close(sock_fd);
+        return 0;
+    }
+
+    return 0;
+}
+
 int set_socket(int port, int *sock_fd) {
-    int listener = socket(PF_INET, SOCK_STREAM, 0);
-    if (listener < 0) {
-        int err_code = errno;
-        err_log_code("error creating socket", err_code);
-        return err_code;
+    *sock_fd = socket(PF_INET, SOCK_STREAM, 0);
+    if (*sock_fd < 0) {
+        return CREATING_SOCKET_ERR;
     }
 
     int param_on = 1;
-    if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &param_on, sizeof(int)) == -1) {
-        close(listener);
-        int err_code = errno;
-        err_log_code("error setting options on socket", err_code);
-        return err_code;
+    if (setsockopt(*sock_fd, SOL_SOCKET, SO_REUSEADDR, &param_on, sizeof(int)) != 0) {
+        close(*sock_fd);
+        return SET_SOCK_OPT_ERR;
     }
 
     struct sockaddr_in serv_addr;
@@ -51,290 +103,141 @@ int set_socket(int port, int *sock_fd) {
     serv_addr.sin_port = htons(port);
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(listener, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-        int err_code = errno;
-        err_log_code("error binding socket", err_code);
-        return err_code;
+    if (bind(*sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) != 0) {
+        return BINDING_SOCKET_ERR;
     }
-    fcntl(listener, F_SETFL, fcntl(listener, F_GETFL, 0) | O_NONBLOCK);
+    if (fcntl(*sock_fd, F_SETFL, fcntl(*sock_fd, F_GETFL, 0) | O_NONBLOCK) != 0) {
+        return SET_SOCK_OPT_ERR;
+    }
 
-    if (listen(listener, INT_MAX) < 0) {
-        int err_code = errno;
-        err_log_code("error listening socket", err_code);
-        return err_code;
+    if (listen(*sock_fd, INT_MAX) != 0) {
+        return LISTENING_SOCKET_ERR;
     }
-    *sock_fd = listener;
-    return 0;
+    return OK;
 }
 
-static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents)
-{
-    printf("!!! %d\n",__LINE__);
-    fflush(stdout);
-//    наверное вот тут происходит что-то, так как докер уже пожаловался, значит он сюда заходит
-//    printf("write_cb\n");
-    struct response_t *resp = (struct response_t *) watcher->data;
-    printf("!!! %s\n",resp->header_raw);
-    fflush(stdout);
-    int send_res = send_http_response_cb(watcher->fd,resp);
-    printf("%d\n",__LINE__);
-    fflush(stdout);
+static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
+    struct response_t *resp = (struct response_t *)watcher->data;
+    int send_res = send_http_response_cb(watcher->fd, resp);
     if (send_res == SOCK_DOESNT_READY_FOR_WRITE) {
         return;
     }
-    printf("%d\n",__LINE__);
-    fflush(stdout);
     if (send_res == SOCK_ERR) {
-        err_log_code("error sending response to socket",errno);
+        err_log("error sending response to socket");
     }
-    printf("%d\n",__LINE__);
-    fflush(stdout);
     if (resp->body_fd > 0) {
         close(resp->body_fd);
     }
-    printf("!!! %d\n",__LINE__);
-    fflush(stdout);
     close(watcher->fd);
     ev_io_stop(loop, watcher);
     free(watcher);
 }
 
-static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents)
-{
-//    printf("    read\n");
-    struct response_t* resp = calloc(1,sizeof(*resp));
+static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
+    struct response_t *resp = calloc(1, sizeof(*resp));
+    if (!resp) {
+        err_log("error callocing response_t");
+        ev_io_stop(loop, watcher);
+        close(watcher->fd);
+        free(watcher);
+        return;
+    }
     int resp_res = get_http_response_cb(watcher->fd, resp);
 
-    if (resp_res == SOCK_DOESNT_READY_FOR_WRITE) {
-        struct ev_io *w_client = calloc(1, sizeof(*w_client));
-        w_client->data = resp;
-        ev_io_init(w_client, write_cb, watcher->fd, EV_WRITE);
-        printf("%d\n",__LINE__);
-        fflush(stdout);
-        ev_io_start(loop, w_client);
-
-//        struct w_client_t *w_client = calloc(1, sizeof(*w_client));
-//        w_client->resp = resp;
-//        ev_io_init(&(w_client->io), write_cb, watcher->fd, EV_WRITE);
-//        printf("%d\n",__LINE__);
-//        fflush(stdout);
-//        ev_io_start(loop, &(w_client->io));
-
-//        printf("%d\n",__LINE__);
-//        fflush(stdout);
-//        printf("    %d\n",resp_res);
-//        fflush(stdout);
-//        watcher->data = &resp;
-//        printf("%d\n",__LINE__);
-//        fflush(stdout);
-//        ev_io_init(watcher, write_cb, watcher->fd, EV_WRITE );
-//        printf("%d\n",__LINE__);
-//        fflush(stdout);
-//        ev_io_
-////        ev_io_start(loop, watcher); // TODO: непонятно, нужна эта строка или нет
-//        printf("%d\n",__LINE__);
-//        fflush(stdout);
-    }
-
-    if (resp_res == OK) {
-        if (resp->body_fd > 0) {
-            close(resp->body_fd);
+    switch (resp_res) {
+        case OK: {
+            if (resp->body_fd > 0) {
+                close(resp->body_fd);
+            }
+            close(watcher->fd);
+            break;
         }
-        close(watcher->fd);
+        case SOCK_DOESNT_READY_FOR_WRITE: {
+            struct ev_io *write_client = calloc(1, sizeof(*write_client));
+            if (!resp) {
+                err_log("error callocing ev_io write_client");
+                ev_io_stop(loop, watcher);
+                close(watcher->fd);
+                free(watcher);
+                return;
+            }
+
+            write_client->data = resp;
+            ev_io_init(write_client, write_cb, watcher->fd, EV_WRITE);
+            ev_io_start(loop, write_client);
+            break;
+        }
+        case SOCK_ERR: {
+            err_log("error sending response to socket");
+            close(watcher->fd);
+        }
+
+        default:
+            break;
     }
 
     ev_io_stop(loop, watcher);
     free(watcher);
-// сделать сокет с таймаутом для пользователя
-// повесить ev_timeout
 }
 
-static void accept_cb(struct ev_loop* loop, ev_io *watcher, int revents)
-{
-    printf("%d\n",__LINE__);
-    fflush(stdout);
-    int client_fd;
-    ev_io *client;
-    client_fd = accept(watcher->fd, NULL, NULL);
+static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
+    int client_sd = accept(watcher->fd, NULL, NULL);
 
-    printf("%d\n",__LINE__);
-    fflush(stdout);
-    if (client_fd > 0) {
-        printf("%d\n",__LINE__);
-        fflush(stdout);
-        fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
-        client = calloc(1, sizeof(*client));
-        ev_io_init(client, read_cb, client_fd, EV_READ);
-        printf("%d\n",__LINE__);
-        fflush(stdout);
-        ev_io_start(loop, client);
-        printf("%d\n",__LINE__);
-        fflush(stdout);
-    } else if ((client_fd < 0) && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        printf("%d\n",__LINE__);
-        fflush(stdout);
-        return;
+    if (client_sd > 0) {
+        fcntl(client_sd, F_SETFL, fcntl(client_sd, F_GETFL, 0) | O_NONBLOCK);
 
-    } else {
-        printf("%d\n",__LINE__);
-        fflush(stdout);
-//        TODO тут было errno 24 , 22
-        fprintf(stdout, "errno %d\n", errno);
-        close(watcher->fd);
-        ev_break(loop, EVBREAK_ALL);
+        struct timeval timeout = {CLIENT_SOCKET_SEND_TIMEOUT, 0};
+        setsockopt(client_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+        timeout.tv_sec = CLIENT_SOCKET_RECV_TIMEOUT;
+        setsockopt(client_sd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+
+        ev_io *client_watcher = calloc(1, sizeof(*client_watcher));
+        if (!client_watcher) {
+            err_log("error callocing ev_io* client_watcher");
+            close(client_sd);
+            return;
+        }
+
+        ev_io_init(client_watcher, read_cb, client_sd, EV_READ);
+        ev_io_start(loop, client_watcher);
+    } else if (errno != EAGAIN) {
+        err_log("error accepting client connection");
     }
-    printf("%d\n",__LINE__);
-    fflush(stdout);
 }
 
 int run_server(int cpu_limit, int sock_fd) {
-    signal(SIGCHLD, worker_exit_handler_job);
-    signal(SIGUSR1, all_workers_killed_job);
-    signal(SIGPIPE, SIG_IGN);
     struct ev_loop *loop = ev_default_loop(EVBACKEND_EPOLL | EVFLAG_FORKCHECK);
+
     if (loop == NULL) {
-        int err_code = errno;
-        err_log_code("error creating default event loop", err_code);
-        return err_code;
+        return CREATING_EVLOOP_ERR;
     }
-    ev_io *watcher = NULL;
-    int num_process_to_fork = cpu_limit;
+
     for (; cpu_limit > 0; --cpu_limit) {
         int pid = fork();
         if (pid == -1) {
-            int err_code = errno;
-            err_log_code("error forking", err_code);
-            return err_code;
+            return FORKING_ERR;
         }
 
         if (pid == 0) {
             add_worker();
-            watcher = calloc(1, sizeof(*watcher));
-            if (watcher == NULL) {
-                int err_code = errno;
-                err_log_code("error creating watcher", err_code);
-                return err_code;
-            }
-            ev_io_init(watcher, accept_cb, sock_fd, EV_READ);
-            ev_io_start(loop, watcher);
+            ev_io watcher = {0};
+            ev_io_init(&watcher, accept_cb, sock_fd, EV_READ);
+            ev_io_start(loop, &watcher);
             ev_run(loop, 0);
-            num_process_to_fork--;
             ev_loop_destroy(loop);
-            free(watcher);
             exit(0);
         }
+
+        signal(SIGCHLD, worker_exit_handler_job);
+        signal(SIGPIPE, SIG_IGN);
+        signal(SIGINT, all_workers_killed_job);
     }
 
-    ev_loop_destroy(loop);
-    free(watcher);
+    // TODO след строка вроде не нужна
+    // ev_loop_destroy(loop);
 
     while (true) {
         sleep(INT_MAX);
     }
-    return 0;
-}
-
-int set_config(int argc, char *argv[], struct config_t *cfg) {
-
-    struct option options[] = {
-            {"help",          no_argument,       NULL, 'h'},
-            {"cpu_limit",     required_argument, NULL, 'c'},
-            {"document_root", required_argument, NULL, 'r'},
-            {NULL, 0,                            NULL, 0}
-    };
-    int c, opt_idx = 0;
-    while ((c = getopt_long(argc, argv, "-c:r:", options, &opt_idx)) != -1) {
-        switch (c) {
-            case 0: {
-                printf("long option %s", options[opt_idx].name);
-                if (optarg) { printf(" with arg %s", optarg); }
-                return -1;
-            }
-            case 1: {
-                printf("non-option argument %s\n", optarg);
-                return -1;
-            }
-            case 'c': {
-                cfg->cpu_limit = atoi(optarg);
-                if (cfg->cpu_limit <= 0) {
-                    printf("cpu limit must be positive number\n");
-                    return -1;
-                }
-                break;
-            }
-            case 'r': {
-                if (optarg == NULL) {
-                    printf("root document path must have [1..50] symbols\n");
-                    return -1;
-                }
-                unsigned long optarg_len = strlen(optarg);
-                if (optarg_len > MAX_LEN_ROOT_PATH || optarg_len <= 0) {
-                    printf("root document path must have [1..50] symbols\n");
-                    return -1;
-                }
-                strncpy(cfg->document_root, optarg, sizeof(cfg->document_root));
-                break;
-            }
-            case 'h': {
-                printf("Usage: %s [--help|--document_root <path>|--cpu_limit <num>] [-r <path>|-c <num>]\n", argv[0]);
-                return -1;
-            }
-            case '?': {
-                printf("Unknown option %c\n", optopt);
-                break;
-            }
-            case ':': {
-                printf("Missing argument for %c\n", optopt);
-                break;
-            }
-            default:
-                break;
-        }
-    }
-
-    printf("%d, %s\n", cfg->cpu_limit, cfg->document_root);
-    if (optind < argc) {
-        printf("unknown argument: %s\n", argv[optind]);
-        return -1;
-    }
-    return 0;
-}
-
-void set_config_default_values(struct config_t *cfg) {
-    if (cfg->cpu_limit == 0) {
-        cfg->cpu_limit = DEFAULT_CPU_LIMIT;
-    }
-    if (strcmp(cfg->document_root, "") == 0) {
-        strcpy(cfg->document_root, DEFAULT_DOCUMENT_ROOT);
-    }
-    if (cfg->port == 0) {
-        cfg->port = PORT;
-    }
-}
-
-int main(int argc, char *argv[]) {
-    fflush(stdout);
-    printf("!!!!\n");
-    init_logger();
-    fflush(stdout);
-    err_log("!!!!!");
-
-    struct config_t cfg = {0};
-    if (set_config(argc, argv, &cfg) != 0) {
-        return 0;
-    }
-
-    set_config_default_values(&cfg);
-    init_document_root(cfg.document_root);
-
-    int sock_fd = -1;
-    if (set_socket(cfg.port, &sock_fd) != 0) {
-        return 0;
-    }
-
-    if (run_server(cfg.cpu_limit, sock_fd) != 0) {
-        return 0;
-    }
-
     return 0;
 }

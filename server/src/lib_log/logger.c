@@ -1,28 +1,67 @@
+#include <errno.h>
+#include <logger.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <server.h>
 
 time_t timer;
+FILE *server_log_file = NULL;
+FILE *access_log_file = NULL;
 
+// сделать логер инлайн, с определением уровня логирования через макросы
+// считывать пути для логирования из опций запуска
+// error_log & info_log acess_log ???
 
-void init_logger(void) {
-    time(&timer);
+int init_logger(const char *server_log, const char *access_log) {
+  time(&timer);
+  if (!server_log || !server_log[0]) {
+    server_log_file = stderr;
+  } else {
+    server_log_file = fopen(server_log, "w");
+    if (server_log_file == NULL) {
+      return OPENING_SERVER_LOG_FILE_ERR;
+    }
+  }
+  if (!access_log || !access_log[0]) {
+    access_log_file = stdout;
+  } else {
+    access_log_file = fopen(access_log, "w");
+    if (access_log_file == NULL) {
+      if (server_log_file != stderr) {
+        fclose(server_log_file);
+      }
+      return OPENING_ACCESS_LOG_FILE_ERR;
+    }
+  }
+  return OK;
 }
 
-void err_log_code(const char *err_str, int err_code) {
-    fprintf(stderr, "%s: %d: %s : error code: %d; message: %s \n", ctime(&timer), getpid(), err_str, err_code, strerror(err_code));
-    fflush(stderr);
+int destruct_logger() {
+  if (!fclose(server_log_file)) {
+    return CLOSING_SERVER_LOG_FILE_ERR;
+  }
+  if (!fclose(access_log_file)) {
+    return CLOSING_ACCESS_LOG_FILE_ERR;
+  }
+  return OK;
 }
 
-void err_log(const char *err_str) {
-    fprintf(stderr, "%s: %s\n", ctime(&timer), err_str);
-    fflush(stderr);
+void err_log(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  char fmt_time[MAX_LOG_MSG_LEN];
+  snprintf(fmt_time,MAX_LOG_MSG_LEN, "[ERROR] %s: %d: %s: %s\n", strtok(ctime(&timer), "\n"), getpid(), fmt,
+          strerror(errno));
+  vfprintf(server_log_file, fmt_time, args);
 }
 
-void info_log(const char *info) {
-    char *curr_time = ctime(&timer);
-    curr_time[strlen(curr_time) - 1] = '\0';
-    fprintf(stderr, "%s: %s", curr_time, info);
-    fflush(stderr);
+void info_log(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  char fmt_time[MAX_LOG_MSG_LEN];
+  snprintf(fmt_time, MAX_LOG_MSG_LEN, "[INFO] %s: %d: %s\n", strtok(ctime(&timer), "\n"), getpid(), fmt);
+  vfprintf(access_log_file, fmt_time, args);
 }

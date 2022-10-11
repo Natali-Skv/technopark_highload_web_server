@@ -7,10 +7,14 @@
 #include <http_inner.h>
 #include <linux/limits.h>
 
-char *document_root;
+char document_root[MAX_LEN_ROOT_PATH];
 
-void init_document_root(char *new_document_root) {
-    document_root = new_document_root;
+int init_document_root(char *new_document_root) {
+    char * resolving_path_res = realpath(new_document_root,document_root);
+    if (resolving_path_res == NULL) {
+        return UNRESOLVING_ROOT_PATH;
+    }
+    return OK;
 }
 
 int get_http_response_cb(int sock_fd, struct  response_t *resp) {

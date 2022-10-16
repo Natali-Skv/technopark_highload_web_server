@@ -1,81 +1,114 @@
-#include <string.h>
 #include <http.h>
-#include <logger.h>
-#include <stdio.h>
-#include <sys/errno.h>
-#include <stdlib.h>
 #include <http_inner.h>
 #include <linux/limits.h>
+#include <logger.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/errno.h>
+
+#define FORBIDDEN_ERR (-1)
+#define NOT_FOUND_ERR (-2)
+#define FILENO_ERR (-3)
 
 char document_root[MAX_LEN_ROOT_PATH];
 
-int init_document_root(char *new_document_root) {
-    char * resolving_path_res = realpath(new_document_root,document_root);
-    if (resolving_path_res == NULL) {
+static int set_fileno(const char *url, int *dest_fd);
+
+int get_http_response_cb(int sock_fd, struct request_t *req) {
+    int read_res = read_request(sock_fd, req->raw_req, &(req->req_offset), MAX_REQUEST_LEN);
+    if (read_res == SOCK_DOESNT_READY_FOR_READ || read_res == SOCK_ERR) {
+        return read_res;
+    }
+    gettimeofday(&req->start_processing_time, NULL);
+    char request_url[MAX_LEN_URL];
+    if (parse_request(req->raw_req, request_url, &req->method) != OK) {
+        req->resp_status_code = BAD_REQUEST_CODE;
+        set_http_err_headers(req->resp_status_code, req->header_raw);
+        gettimeofday(&req->end_processing_time, NULL);
+        return send_response(sock_fd, req);
+    }
+
+    if (req->method == METHOD_NOT_ALLOWED_T) {
+        req->resp_status_code = METHOD_NOT_ALLOWED_CODE;
+        set_http_err_headers(req->resp_status_code, req->header_raw);
+        gettimeofday(&req->end_processing_time, NULL);
+        return send_response(sock_fd, req);
+    }
+
+    if (decode_url(request_url) != OK) {
+        req->resp_status_code = BAD_REQUEST_CODE;
+        set_http_err_headers(req->resp_status_code, req->header_raw);
+        gettimeofday(&req->end_processing_time, NULL);
+        return send_response(sock_fd, req);
+    }
+    int set_fileno_res = set_fileno(request_url, &req->resp_body_fd);
+    if (set_fileno_res != OK) {
+        if (set_fileno_res == FORBIDDEN_ERR) {
+            req->resp_status_code = FORBIDDEN_CODE;
+        } else if (set_fileno_res == NOT_FOUND_ERR) {
+            req->resp_status_code = NOT_FOUND_CODE;
+        } else {
+            request_err_log(req->req_id, "error getting fd for requested file");
+            req->resp_status_code = INTERNAL_SERVER_ERR_CODE;
+        }
+        set_http_err_headers(req->resp_status_code, req->header_raw);
+        gettimeofday(&req->end_processing_time, NULL);
+        return send_response(sock_fd, req);
+    }
+    req->resp_content_length = get_content_length(req->resp_body_fd);
+    req->resp_status_code = OK_CODE;
+    set_http_ok_headers(req->resp_status_code, request_url, req->resp_content_length, req->header_raw);
+    gettimeofday(&req->end_processing_time, NULL);
+    return send_response(sock_fd, req);
+}
+
+static int set_fileno(const char *url, int *dest_fd) {
+    char absolute_path[MAX_LEN_ABSOLUTE_FILEPATH];
+    strncpy(absolute_path, document_root, MAX_LEN_ROOT_PATH);
+    strncat(absolute_path, url, MAX_LEN_URL);
+    if (is_directory_path(url)) {
+        strncat(absolute_path, DEFAULT_FILENAME, strlen(DEFAULT_FILENAME));
+    }
+    char real_path[MAX_LEN_ABSOLUTE_FILEPATH];
+    if (!realpath(absolute_path, real_path)) {
+        if (errno != ENOTDIR && is_directory_path(url)) {
+            return FORBIDDEN_ERR;
+        }
+        return NOT_FOUND_ERR;
+    }
+    if (strncmp(real_path, document_root, strlen(document_root)) != 0) {
+        return FORBIDDEN_ERR;
+    }
+    FILE *file = fopen(real_path, "r+");
+    // TODO: тут может быть ошибка, если тесты прошли -> ок
+    // if (file == NULL) {
+    //     if (errno == EACCES) {
+    //         return FORBIDDEN_ERR;
+    //     } else {
+    //         req->resp_status_code = NOT_FOUND_CODE;
+    //     }
+    //     return send_response(sock_fd, req);
+    //     ;
+    // }
+    *dest_fd = fileno(file);
+    if (*dest_fd == -1) {
+        return FILENO_ERR;
+    }
+    return OK;
+}
+
+int is_directory_path(const char *path) {
+    return path[strlen(path) - 1] == '/';
+}
+
+int init_document_root(const char *new_document_root) {
+    if (!realpath(new_document_root, document_root)) {
         return UNRESOLVING_ROOT_PATH;
     }
     return OK;
 }
 
-int get_http_response_cb(int sock_fd, struct  response_t *resp) {
-    set_date(resp->date);
-    char raw_req[MAX_REQUEST_LEN] = {0};
-    read_http_request(sock_fd, raw_req, MAX_REQUEST_LEN);
-
-    struct request_t req = {0};
-    if (parse_http_request(raw_req, &req) != 0) {
-        resp->status_code = BAD_REQUEST_CODE;
-        return send_http_response(sock_fd, resp);;
-    }
-
-    if (req.meth == METHOD_NOT_ALLOWED_T) {
-        resp->status_code = METHOD_NOT_ALLOWED_CODE;
-        return send_http_response(sock_fd, resp);
-    }
-    resp->method = req.meth;
-    if (decode_url(req.url) != 0) {
-        resp->status_code = BAD_REQUEST_CODE;
-        return send_http_response(sock_fd, resp);;
-    }
-
-    char *absolute_static_path = calloc(strlen(req.url) + strlen(document_root) + 1 + strlen("index.html"), sizeof(char));
-    absolute_static_path = strcat(absolute_static_path, document_root);
-    absolute_static_path = strcat(absolute_static_path, req.url);
-    if (req.url[strlen(req.url) - 1] == '/') {
-        absolute_static_path = strcat(absolute_static_path, "index.html");
-    }
-    char resolved_path[PATH_MAX];
-    char * resolving_res = realpath(absolute_static_path,resolved_path);
-    if (resolving_res == NULL) {
-        if (errno != ENOTDIR && req.url[strlen(req.url) - 1] == '/') {
-            resp->status_code = FORBIDDEN_CODE;
-        } else {
-            resp->status_code = NOT_FOUND_CODE;
-        }
-        free(absolute_static_path);
-        return send_http_response(sock_fd, resp);;
-    }
-    if (strncmp(resolved_path,document_root, strlen(document_root)) != 0) {
-        resp->status_code = FORBIDDEN_CODE;
-        free(absolute_static_path);
-        return send_http_response(sock_fd, resp);;
-    }
-    FILE *static_file = fopen(absolute_static_path, "r+");
-    free(absolute_static_path);
-    if (static_file == NULL) {
-        if (errno == EACCES) {
-            resp->status_code = FORBIDDEN_CODE;
-        } else {
-            resp->status_code = NOT_FOUND_CODE;
-        }
-        return send_http_response(sock_fd, resp);;
-    }
-    resp->body_fd = fileno(static_file);
-
-    resp->content_length = get_content_length(resp->body_fd);
-    resp->content_type = get_content_type(req.url);
-    resp->status_code = OK_CODE;
-
-//    fclose(static_file); TODO закрывать в рид_цб
-    return  send_http_response(sock_fd,resp);
+void reset_500_resp(struct request_t *resp) {
+    resp->resp_status_code = INTERNAL_SERVER_ERR_CODE;
 }

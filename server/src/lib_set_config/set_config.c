@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 
-int set_config(int argc, char *argv[], struct config_t *cfg) {
+int set_config(int argc, char *argv[], struct config_t *dst_cfg) {
     struct option options[] = {{"help", no_argument, NULL, 'h'},
                                {"cpu_limit", required_argument, NULL, 'c'},
                                {"document_root", required_argument, NULL, 'r'},
@@ -19,8 +19,8 @@ int set_config(int argc, char *argv[], struct config_t *cfg) {
                 return WRANG_OPTIONS;
             }
             case 'c': {
-                cfg->cpu_limit = atoi(optarg);
-                if (cfg->cpu_limit <= 0) {
+                dst_cfg->cpu_limit = atoi(optarg);
+                if (dst_cfg->cpu_limit <= 0) {
                     printf("cpu limit must be positive number\n");
                     return WRANG_OPTIONS;
                 }
@@ -36,7 +36,7 @@ int set_config(int argc, char *argv[], struct config_t *cfg) {
                     printf("root document path must have [1..%d] symbols\n", MAX_LEN_ROOT_PATH);
                     return WRANG_OPTIONS;
                 }
-                strncpy(cfg->document_root, optarg, MAX_LEN_ROOT_PATH);
+                strncpy(dst_cfg->document_root, optarg, MAX_LEN_ROOT_PATH);
                 break;
             }
             case 's': {
@@ -49,7 +49,7 @@ int set_config(int argc, char *argv[], struct config_t *cfg) {
                     printf("server log path must have [1..%d] symbols\n", MAX_LEN_SERVER_LOG_PATH);
                     return WRANG_OPTIONS;
                 }
-                strncpy(cfg->server_log_path, optarg, MAX_LEN_SERVER_LOG_PATH);
+                strncpy(dst_cfg->server_log_path, optarg, MAX_LEN_SERVER_LOG_PATH);
                 break;
             }
             case 'a': {
@@ -62,7 +62,7 @@ int set_config(int argc, char *argv[], struct config_t *cfg) {
                     printf("access log path must have [1..%d] symbols\n", MAX_LEN_ACCESS_LOG_PATH);
                     return WRANG_OPTIONS;
                 }
-                strncpy(cfg->access_log_path, optarg, MAX_LEN_ACCESS_LOG_PATH);
+                strncpy(dst_cfg->access_log_path, optarg, MAX_LEN_ACCESS_LOG_PATH);
                 break;
             }
             case 'h': {

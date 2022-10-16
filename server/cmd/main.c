@@ -25,7 +25,7 @@
 
 struct w_client_t {
     ev_io io;
-    struct response_t *resp;
+    struct request_t *req;
 };
 
 int set_socket(int port, int *sock_fd);
@@ -104,71 +104,78 @@ int set_socket(int port, int *sock_fd) {
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(*sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) != 0) {
+        close(*sock_fd);
         return BINDING_SOCKET_ERR;
     }
     if (fcntl(*sock_fd, F_SETFL, fcntl(*sock_fd, F_GETFL, 0) | O_NONBLOCK) != 0) {
+        close(*sock_fd);
         return SET_SOCK_OPT_ERR;
     }
 
     if (listen(*sock_fd, INT_MAX) != 0) {
+        close(*sock_fd);
         return LISTENING_SOCKET_ERR;
     }
     return OK;
 }
 
 static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
-    struct response_t *resp = (struct response_t *)watcher->data;
-    int send_res = send_http_response_cb(watcher->fd, resp);
+    struct request_t *req = (struct request_t *)watcher->data;
+    int send_res = send_response(watcher->fd, req);
     if (send_res == SOCK_DOESNT_READY_FOR_WRITE) {
         return;
     }
     if (send_res == SOCK_ERR) {
-        err_log("error sending response to socket");
+        request_err_log(req->req_id, "error sending response to socket");
     }
-    if (resp->body_fd > 0) {
-        close(resp->body_fd);
+    if (req->resp_body_fd > 0) {
+        close(req->resp_body_fd);
     }
+    gettimeofday(&req->end_full_time, NULL);
+    access_log(req);
     close(watcher->fd);
     ev_io_stop(loop, watcher);
     free(watcher);
 }
 
 static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
-    struct response_t *resp = calloc(1, sizeof(*resp));
-    if (!resp) {
-        err_log("error callocing response_t");
-        ev_io_stop(loop, watcher);
-        close(watcher->fd);
-        free(watcher);
-        return;
-    }
-    int resp_res = get_http_response_cb(watcher->fd, resp);
+    struct request_t *req = (struct request_t *)watcher->data;
+    gettimeofday(&req->start_full_time, NULL);
+    int resp_res = get_http_response_cb(watcher->fd, req);
 
     switch (resp_res) {
         case OK: {
-            if (resp->body_fd > 0) {
-                close(resp->body_fd);
+            if (req->resp_body_fd > 0) {
+                close(req->resp_body_fd);
             }
             close(watcher->fd);
+            gettimeofday(&req->end_full_time, NULL);
+            access_log(req);
             break;
+        }
+        case SOCK_DOESNT_READY_FOR_READ: {
+            return;
         }
         case SOCK_DOESNT_READY_FOR_WRITE: {
             struct ev_io *write_client = calloc(1, sizeof(*write_client));
-            if (!resp) {
+            if (!req) {
                 err_log("error callocing ev_io write_client");
                 ev_io_stop(loop, watcher);
                 close(watcher->fd);
                 free(watcher);
-                return;
+                break;
             }
 
-            write_client->data = resp;
+            write_client->data = req;
             ev_io_init(write_client, write_cb, watcher->fd, EV_WRITE);
             ev_io_start(loop, write_client);
             break;
         }
         case SOCK_ERR: {
-            err_log("error sending response to socket");
+            request_err_log(req->req_id, "error with socket");
+            if (req->resp_body_fd > 0) {
+                close(req->resp_body_fd);
+            }
             close(watcher->fd);
         }
 
@@ -181,6 +188,7 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
 }
 
 static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
+    static unsigned int req_id = 0;
     int client_sd = accept(watcher->fd, NULL, NULL);
 
     if (client_sd > 0) {
@@ -198,6 +206,14 @@ static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
             return;
         }
 
+        struct request_t *req = calloc(1, sizeof(*req));
+        if (!client_watcher) {
+            err_log("error callocing request_t *");
+            close(client_sd);
+            return;
+        }
+        req->req_id = ++req_id;
+        client_watcher->data = req;
         ev_io_init(client_watcher, read_cb, client_sd, EV_READ);
         ev_io_start(loop, client_watcher);
     } else if (errno != EAGAIN) {
@@ -207,6 +223,10 @@ static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
 
 int run_server(int cpu_limit, int sock_fd) {
     struct ev_loop *loop = ev_default_loop(EVBACKEND_EPOLL | EVFLAG_FORKCHECK);
+
+    signal(SIGCHLD, worker_exit_handler_job);
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, all_workers_killed_job);
 
     if (loop == NULL) {
         return CREATING_EVLOOP_ERR;
@@ -219,7 +239,6 @@ int run_server(int cpu_limit, int sock_fd) {
         }
 
         if (pid == 0) {
-            add_worker();
             ev_io watcher = {0};
             ev_io_init(&watcher, accept_cb, sock_fd, EV_READ);
             ev_io_start(loop, &watcher);
@@ -228,13 +247,8 @@ int run_server(int cpu_limit, int sock_fd) {
             exit(0);
         }
 
-        signal(SIGCHLD, worker_exit_handler_job);
-        signal(SIGPIPE, SIG_IGN);
-        signal(SIGINT, all_workers_killed_job);
+        add_worker();
     }
-
-    // TODO след строка вроде не нужна
-    // ev_loop_destroy(loop);
 
     while (true) {
         sleep(INT_MAX);

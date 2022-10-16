@@ -1,11 +1,11 @@
 #include <logger.h>
+#include <sig_handler.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <sig_handler.h>
 
 int worker_count = 0;
 int sock_fd = 0;
@@ -14,7 +14,6 @@ void init_sig_handler(int sd) {
     sock_fd = sock_fd;
 }
 
-// отправляет текущему процессу SIGUSR1, если все воркеры завершились
 void worker_exit_handler_job(int signal) {
     pid_t pid;
     int status;
@@ -27,7 +26,6 @@ void worker_exit_handler_job(int signal) {
             info_log("Worker %d stopped by signal %d\n", pid, WSTOPSIG(status));
         }
         worker_count--;
-        printf("   %d", worker_count);
     }
     if (worker_count == 0) {
         all_workers_killed_job(SIGINT);

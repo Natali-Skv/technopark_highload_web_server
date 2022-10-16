@@ -23,7 +23,9 @@
 #define BAD_REQUEST_STATUS "BAD REQUEST"
 
 #define UNKNOWN_HTTP_VERSION (-1)
-#define FSTAT_ERR (-2)
+#define UNKNOWN_METHOD (-2)
+#define FSTAT_ERR (-3)
+#define TOO_LONG_REQUEST_ERR (-4)
 
 int decode_url(char *url);
 int is_directory_path(const char *path);

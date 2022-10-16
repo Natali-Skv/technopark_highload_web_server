@@ -134,6 +134,7 @@ static void write_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
     gettimeofday(&req->end_full_time, NULL);
     access_log(req);
     close(watcher->fd);
+    free(req);
     ev_io_stop(loop, watcher);
     free(watcher);
 }
@@ -145,12 +146,6 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
 
     switch (resp_res) {
         case OK: {
-            if (req->resp_body_fd > 0) {
-                close(req->resp_body_fd);
-            }
-            close(watcher->fd);
-            gettimeofday(&req->end_full_time, NULL);
-            access_log(req);
             break;
         }
         case SOCK_DOESNT_READY_FOR_READ: {
@@ -160,30 +155,33 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
             struct ev_io *write_client = calloc(1, sizeof(*write_client));
             if (!req) {
                 err_log("error callocing ev_io write_client");
-                ev_io_stop(loop, watcher);
-                close(watcher->fd);
-                free(watcher);
                 break;
             }
 
             write_client->data = req;
             ev_io_init(write_client, write_cb, watcher->fd, EV_WRITE);
             ev_io_start(loop, write_client);
-            break;
+            ev_io_stop(loop, watcher);
+            free(watcher);
+            return;
         }
         case SOCK_ERR: {
             request_err_log(req->req_id, "error with socket");
-            if (req->resp_body_fd > 0) {
-                close(req->resp_body_fd);
-            }
-            close(watcher->fd);
-        }
-
-        default:
             break;
+        }
     }
 
+    if (req->resp_body_fd > 0) {
+        close(req->resp_body_fd);
+    }
+
+    close(watcher->fd);
+
+    gettimeofday(&req->end_full_time, NULL);
+    access_log(req);
+    
     ev_io_stop(loop, watcher);
+    free(req);
     free(watcher);
 }
 
@@ -194,10 +192,10 @@ static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
     if (client_sd > 0) {
         fcntl(client_sd, F_SETFL, fcntl(client_sd, F_GETFL, 0) | O_NONBLOCK);
 
-        struct timeval timeout = {CLIENT_SOCKET_SEND_TIMEOUT, 0};
-        setsockopt(client_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
-        timeout.tv_sec = CLIENT_SOCKET_RECV_TIMEOUT;
-        setsockopt(client_sd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+        // struct timeval timeout = {CLIENT_SOCKET_SEND_TIMEOUT, 0};
+        // setsockopt(client_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+        // timeout.tv_sec = CLIENT_SOCKET_RECV_TIMEOUT;
+        // setsockopt(client_sd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
 
         ev_io *client_watcher = calloc(1, sizeof(*client_watcher));
         if (!client_watcher) {

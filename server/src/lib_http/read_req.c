@@ -4,7 +4,6 @@
 #include <sys/errno.h>
 #include <sys/socket.h>
 
-
 static char hex_to_decimal_digit(char hex_code);
 static char hex_to_decimal_char(const char hex_char[2]);
 static int is_valid_req_verion(const char *http_version);
@@ -33,14 +32,17 @@ int decode_url(char *url) {
     return 0;
 }
 
-int parse_request(const char *raw_req,char *dst_url, enum rest_method_t *dst_method) {
+int parse_request(const char *raw_req, char *dst_url, enum rest_method_t *dst_method) {
     char method_str[MAX_LEN_METHOD];
     char http_version[HTTP_VERSION_MAX_LEN];
-    if (sscanf(raw_req, "%s %s %s\n", method_str, dst_url, http_version) != 3) {
+    if (sscanf(raw_req, "%s %s %s", method_str, dst_url, http_version) != 3) {
         return PARSING_REQ_ERR;
     }
     *dst_method = get_request_method(method_str);
-    if (!is_valid_req_verion(http_version)) {
+    if (*dst_method == METHOD_NOT_ALLOWED_T) {
+        return UNKNOWN_METHOD;
+    }
+    if (is_valid_req_verion(http_version) != OK) {
         return UNKNOWN_HTTP_VERSION;
     }
 
@@ -52,12 +54,18 @@ int parse_request(const char *raw_req,char *dst_url, enum rest_method_t *dst_met
 }
 
 int read_request(int socket_fd, char *req, size_t *offset, size_t max_req_len) {
-    for (ssize_t rvd = 1; (rvd > 0) && (req[*offset] != '\n'); *offset += rvd) {
+    char *first_line_request_end = NULL;
+    ssize_t rvd = 1;
+    for (; (rvd > 0) && !(first_line_request_end = strstr(req, "\r\n")); *offset += rvd) {
         rvd = recv(socket_fd, req + *offset, max_req_len - 1, 0);
-        if (rvd == -1) {
-            return errno == EAGAIN ? SOCK_DOESNT_READY_FOR_READ : SOCK_ERR;
-        }
     }
+    if (rvd == -1 && !first_line_request_end) {
+        return errno == EAGAIN ? SOCK_DOESNT_READY_FOR_READ : SOCK_ERR;
+    }
+    if (!first_line_request_end ) {
+        return TOO_LONG_REQUEST_ERR;
+    }
+    first_line_request_end[0] = '\0';
     return OK;
 }
 
@@ -72,10 +80,10 @@ static enum rest_method_t get_request_method(const char *method) {
 }
 
 static int is_valid_req_verion(const char *http_version) {
-    if (strcmp(http_version, HTTP1_0) || strcmp(http_version, HTTP1_1) || strcmp(http_version, HTTP2_0)) {
-        return OK;
+    if (strcmp(http_version, HTTP1_0) && strcmp(http_version, HTTP1_1) && strcmp(http_version, HTTP2_0)) {
+        return UNKNOWN_HTTP_VERSION;
     }
-    return UNKNOWN_HTTP_VERSION;
+    return OK;
 }
 
 static char hex_to_decimal_digit(char hex_code) {

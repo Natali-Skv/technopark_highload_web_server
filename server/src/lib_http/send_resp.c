@@ -1,34 +1,34 @@
-#include <string.h>
-#include <sys/socket.h>
-#include <stdio.h>
-#include <sys/errno.h>
-#include <http_inner.h>
 #include <http.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <sys/sendfile.h>
-#include <sys/types.h>
+#include <http_inner.h>
 #include <logger.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/errno.h>
+#include <sys/sendfile.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
 
 static const struct table_entry {
     const char *extension;
     const char *content_type;
 } content_type_table[] = {
-        {"txt",  "text/plain"},
-        {"c",    "text/plain"},
-        {"h",    "text/plain"},
-        {"html", "text/html"},
-        {"htm",  "text/htm"},
-        {"css",  "text/css"},
-        {"gif",  "image/gif"},
-        {"jpg",  "image/jpeg"},
-        {"jpeg", "image/jpeg"},
-        {"png",  "image/png"},
-        {"pdf",  "application/pdf"},
-        {"ps",   "application/postscript"},
-        {"js",   "application/javascript"},
-        {"swf",  "application/x-shockwave-flash"},
-        {NULL, NULL},
+    {"txt", "text/plain"},
+    {"c", "text/plain"},
+    {"h", "text/plain"},
+    {"html", "text/html"},
+    {"htm", "text/htm"},
+    {"css", "text/css"},
+    {"gif", "image/gif"},
+    {"jpg", "image/jpeg"},
+    {"jpeg", "image/jpeg"},
+    {"png", "image/png"},
+    {"pdf", "application/pdf"},
+    {"ps", "application/postscript"},
+    {"js", "application/javascript"},
+    {"swf", "application/x-shockwave-flash"},
+    {NULL, NULL},
 };
 
 ssize_t get_content_length(int fd) {
@@ -83,48 +83,67 @@ const char *get_answer_msg(int http_status_code) {
     return "";
 }
 
-void set_http_err_headers(int status_code, char * dst_headers_raw) {
+void set_http_err_headers(int status_code, char *dst_headers_raw) {
     char headers_template[] = "%s %d %s\r\nDate: %s\r\nServer: web\r\nContent-Length: 0\r\nContent-Type: \r\nConnection: Closed\r\n\r\n";
     char date[MAX_LEN_DATE];
     set_date(date);
     sprintf(dst_headers_raw, headers_template, HTTP1_0, status_code, get_answer_msg(status_code), date);
 }
 
-void set_http_ok_headers(int status_code,const char * filename, size_t content_length, char * dst_headers_raw) {
+void set_http_ok_headers(int status_code, const char *filename, size_t content_length, char *dst_headers_raw) {
     char headers_template[] = "%s %d %s\r\nDate: %s\r\nServer: web\r\nContent-Length: %d\r\nContent-Type: %s\r\nConnection: Closed\r\n\r\n";
     char date[MAX_LEN_DATE];
     set_date(date);
     sprintf(dst_headers_raw, headers_template, HTTP1_0, status_code, get_answer_msg(status_code), date, content_length, get_content_type(filename));
 }
 
-int send_response(int sock_fd, struct request_t *req ) {
+int send_response(int sock_fd, struct request_t *req) {
+ 
     size_t header_len = strlen(req->header_raw);
     ssize_t curr_sent = 0;
+ 
     while (req->resp_headers_offset < header_len) {
-        curr_sent = send(sock_fd, req->header_raw + req->resp_headers_offset, header_len - req->resp_headers_offset, 0 );
+ 
+        curr_sent = send(sock_fd, req->header_raw + req->resp_headers_offset, header_len - req->resp_headers_offset, 0);
         if (curr_sent == -1) {
+ 
             if (errno == EAGAIN) {
+ 
                 return SOCK_DOESNT_READY_FOR_READ;
             }
-            request_err_log(req->req_id,"error sending response");
+ 
+            request_err_log(req->req_id, "1 error sending response");
             return SOCK_ERR;
         }
+ 
         req->resp_headers_offset += curr_sent;
     }
     if (req->resp_status_code != OK_CODE || req->method == HEAD_T) {
+ 
         return OK;
     }
+    // TODO remove
+    // return OK;
 
+ 
     while (req->resp_body_sent < req->resp_content_length) {
-        curr_sent = sendfile(sock_fd, req->resp_body_fd, &req->resp_body_offset, req->resp_content_length );
+ 
+        curr_sent = sendfile(sock_fd, req->resp_body_fd, &req->resp_body_offset, req->resp_content_length);
+ 
         if (curr_sent == -1) {
+ 
             if (errno == EAGAIN) {
+ 
                 return SOCK_DOESNT_READY_FOR_READ;
             }
-            request_err_log(req->req_id,"error sending response");
+ 
+            request_err_log(req->req_id, "2 error sending response");
+ 
             return SOCK_ERR;
         }
+ 
         req->resp_body_sent += curr_sent;
     }
+ 
     return OK;
 }

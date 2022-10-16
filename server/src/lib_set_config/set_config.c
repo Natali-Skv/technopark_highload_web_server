@@ -8,11 +8,11 @@ int set_config(int argc, char *argv[], struct config_t *dst_cfg) {
     struct option options[] = {{"help", no_argument, NULL, 'h'},
                                {"cpu_limit", required_argument, NULL, 'c'},
                                {"document_root", required_argument, NULL, 'r'},
-                               {"server-log", required_argument, NULL, 's'},
-                               {"access-log", required_argument, NULL, 'a'},
+                               {"server_log", required_argument, NULL, 's'},
+                               {"access_log", required_argument, NULL, 'a'},
                                {NULL, 0, NULL, 0}};
     int opt, opt_idx = 0;
-    while ((opt = getopt_long(argc, argv, "-c:r:s:a:", options, &opt_idx)) != -1) {
+    while ((opt = getopt_long(argc, argv, "-c:r:s:a:h", options, &opt_idx)) != -1) {
         switch (opt) {
             case 1: {
                 printf("non-option argument %s\n", optarg);
@@ -67,8 +67,7 @@ int set_config(int argc, char *argv[], struct config_t *dst_cfg) {
             }
             case 'h': {
                 printf(
-                    "Usage: %s [--help|--document_root <path>|--cpu_limit <num>] [-r "
-                    "<path>|-c <num>]\n",
+                    "Usage: %s [--help|--document_root <path>|--cpu_limit <num>|access_log <path>|server_log <path>] [-r <path>|-c <num>|-a <path>|-s <path>]\n",
                     argv[0]);
                 return SHOW_USAGE_MODE;
             }

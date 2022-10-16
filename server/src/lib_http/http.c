@@ -17,20 +17,32 @@ static int set_fileno(const char *url, int *dest_fd);
 
 int get_http_response_cb(int sock_fd, struct request_t *req) {
     int read_res = read_request(sock_fd, req->raw_req, &(req->req_offset), MAX_REQUEST_LEN);
-    if (read_res == SOCK_DOESNT_READY_FOR_READ || read_res == SOCK_ERR) {
-        return read_res;
-    }
-    gettimeofday(&req->start_processing_time, NULL);
-    char request_url[MAX_LEN_URL];
-    if (parse_request(req->raw_req, request_url, &req->method) != OK) {
-        req->resp_status_code = BAD_REQUEST_CODE;
-        set_http_err_headers(req->resp_status_code, req->header_raw);
-        gettimeofday(&req->end_processing_time, NULL);
-        return send_response(sock_fd, req);
+    if (read_res != OK) {
+        if (read_res == SOCK_DOESNT_READY_FOR_READ) {
+            return SOCK_DOESNT_READY_FOR_READ;
+        }
+        if (read_res == SOCK_ERR) {
+            return SOCK_ERR;
+        }
+        if (read_res == TOO_LONG_REQUEST_ERR) {
+            req->resp_status_code = BAD_REQUEST_CODE;
+            set_http_err_headers(req->resp_status_code, req->header_raw);
+            gettimeofday(&req->end_processing_time, NULL);
+            return send_response(sock_fd, req);
+        }
     }
 
-    if (req->method == METHOD_NOT_ALLOWED_T) {
-        req->resp_status_code = METHOD_NOT_ALLOWED_CODE;
+    gettimeofday(&req->start_processing_time, NULL);
+    char request_url[MAX_LEN_URL];
+
+    int parse_req_res = parse_request(req->raw_req, request_url, &req->method);
+    if (parse_req_res != OK) {
+        if (parse_req_res == UNKNOWN_HTTP_VERSION) {
+            req->resp_status_code = BAD_REQUEST_CODE;
+        } else {
+            req->resp_status_code = METHOD_NOT_ALLOWED_CODE;
+        }
+
         set_http_err_headers(req->resp_status_code, req->header_raw);
         gettimeofday(&req->end_processing_time, NULL);
         return send_response(sock_fd, req);
@@ -43,6 +55,7 @@ int get_http_response_cb(int sock_fd, struct request_t *req) {
         return send_response(sock_fd, req);
     }
     int set_fileno_res = set_fileno(request_url, &req->resp_body_fd);
+
     if (set_fileno_res != OK) {
         if (set_fileno_res == FORBIDDEN_ERR) {
             req->resp_status_code = FORBIDDEN_CODE;
@@ -52,10 +65,12 @@ int get_http_response_cb(int sock_fd, struct request_t *req) {
             request_err_log(req->req_id, "error getting fd for requested file");
             req->resp_status_code = INTERNAL_SERVER_ERR_CODE;
         }
+
         set_http_err_headers(req->resp_status_code, req->header_raw);
         gettimeofday(&req->end_processing_time, NULL);
         return send_response(sock_fd, req);
     }
+
     req->resp_content_length = get_content_length(req->resp_body_fd);
     req->resp_status_code = OK_CODE;
     set_http_ok_headers(req->resp_status_code, request_url, req->resp_content_length, req->header_raw);

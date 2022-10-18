@@ -9,11 +9,6 @@ COPY ./httptest /var/www/html/httptest
 
 
 RUN chmod +x build.sh && ./build.sh
-RUN echo "install this"
-RUN touch /var/log/err.log
-RUN ln -sf /dev/stdout /var/log/err.log
-#RUN ln -sf /dev/stdout /var/log/nginx/access.log \
-#    && ln -sf /dev/stderr /var/log/nginx/error.log
 
 WORKDIR /build
 

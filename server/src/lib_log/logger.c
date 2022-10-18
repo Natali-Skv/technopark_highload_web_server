@@ -31,7 +31,7 @@ int init_logger(const char *server_log_path_prefix, const char *access_log_path_
     } else {
         char server_log_filename[MAX_LEN_SERVER_LOG_PATH + sizeof(pid_str)];
         strncpy(server_log_filename, server_log_path_prefix, sizeof(server_log_filename));
-        strncat(server_log_filename, pid_str, sizeof(pid_str));
+        strncat(server_log_filename, pid_str, sizeof(server_log_filename));
         server_log_file = fopen(server_log_filename, "w");
         if (server_log_file == NULL) {
             return OPENING_SERVER_LOG_FILE_ERR;
@@ -43,7 +43,7 @@ int init_logger(const char *server_log_path_prefix, const char *access_log_path_
     } else {
         char access_log_filename[MAX_LEN_ACCESS_LOG_PATH + sizeof(pid_str)];
         strncpy(access_log_filename, access_log_path_prefix, sizeof(access_log_filename));
-        strncat(access_log_filename, pid_str, sizeof(pid_str));
+        strncat(access_log_filename, pid_str, sizeof(access_log_filename));
         access_log_file = fopen(access_log_filename, "w");
         if (access_log_file == NULL) {
             if (server_log_file != stderr) {

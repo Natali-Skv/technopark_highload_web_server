@@ -96,16 +96,6 @@ static int set_fileno(const char *url, int *dest_fd) {
         return FORBIDDEN_ERR;
     }
     FILE *file = fopen(real_path, "r+");
-    // TODO: тут может быть ошибка, если тесты прошли -> ок
-    // if (file == NULL) {
-    //     if (errno == EACCES) {
-    //         return FORBIDDEN_ERR;
-    //     } else {
-    //         req->resp_status_code = NOT_FOUND_CODE;
-    //     }
-    //     return send_response(sock_fd, req);
-    //     ;
-    // }
     *dest_fd = fileno(file);
     if (*dest_fd == -1) {
         return FILENO_ERR;

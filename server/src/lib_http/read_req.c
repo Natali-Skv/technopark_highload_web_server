@@ -53,6 +53,23 @@ int parse_request(const char *raw_req, char *dst_url, enum rest_method_t *dst_me
     return OK;
 }
 
+// int read_request(int socket_fd, char *req, size_t *offset, size_t max_req_len) {
+//     char *first_line_request_end = NULL;
+//     ssize_t rvd = 1;
+//     // сделать блокирующее чтение, неблокирующую запись
+//     for (; ((rvd > 0) || (rvd = -1) && (errno == EAGAIN)) && !(first_line_request_end = strstr(req, "\r\n")); *offset += rvd) {
+//         rvd = recv(socket_fd, req + *offset, max_req_len - 1, 0);
+//     }
+//     if (rvd == -1 && !first_line_request_end) {
+//         return errno == EAGAIN ? SOCK_DOESNT_READY_FOR_READ : SOCK_ERR;
+//     }
+//     if (!first_line_request_end) {
+//         return TOO_LONG_REQUEST_ERR;
+//     }
+//     first_line_request_end[0] = '\0';
+//     return OK;
+// }
+
 int read_request(int socket_fd, char *req, size_t *offset, size_t max_req_len) {
     char *first_line_request_end = NULL;
     ssize_t rvd = 1;
@@ -62,7 +79,7 @@ int read_request(int socket_fd, char *req, size_t *offset, size_t max_req_len) {
     if (rvd == -1 && !first_line_request_end) {
         return errno == EAGAIN ? SOCK_DOESNT_READY_FOR_READ : SOCK_ERR;
     }
-    if (!first_line_request_end ) {
+    if (!first_line_request_end) {
         return TOO_LONG_REQUEST_ERR;
     }
     first_line_request_end[0] = '\0';

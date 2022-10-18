@@ -29,7 +29,7 @@ struct w_client_t {
 };
 
 int set_socket(int port, int *sock_fd);
-int run_server(int cpu_limit, int sock_fd);
+int run_server(int sock_fd, struct config_t *cfg);
 
 int main(int argc, char *argv[]) {
     struct config_t cfg = {0};
@@ -38,19 +38,8 @@ int main(int argc, char *argv[]) {
     }
     set_config_default_values(&cfg);
 
-    int init_logger_res = init_logger(cfg.server_log_path, cfg.access_log_path);
-    if (init_logger_res == OPENING_SERVER_LOG_FILE_ERR) {
-        printf("error opening server log file: %s", strerror(errno));
-        return 0;
-    }
-    if (init_logger_res == OPENING_ACCESS_LOG_FILE_ERR) {
-        printf("error opening access log file: %s", strerror(errno));
-        return 0;
-    }
-
     if (init_document_root(cfg.document_root) == UNRESOLVING_ROOT_PATH) {
         printf("error resolving root path: %s", strerror(errno));
-        destruct_logger();
         return 0;
     }
 
@@ -58,27 +47,21 @@ int main(int argc, char *argv[]) {
     int set_socket_res = set_socket(cfg.port, &sock_fd);
     if (set_socket_res == CREATING_SOCKET_ERR) {
         printf("error creating socket: %s", strerror(errno));
-        destruct_logger();
         return 0;
     } else if (set_socket_res == SET_SOCK_OPT_ERR) {
         printf("error setting socket options: %s", strerror(errno));
-        destruct_logger();
         return 0;
     } else if (set_socket_res == BINDING_SOCKET_ERR) {
         printf("error bilding socket: %s", strerror(errno));
-        destruct_logger();
         return 0;
     } else if (set_socket_res == LISTENING_SOCKET_ERR) {
         printf("error listening socket: %s", strerror(errno));
-        destruct_logger();
         return 0;
     }
 
     init_sig_handler(sock_fd);
 
-    info_log("starting server with cpu limit: %d, document root: %s\n", cfg.cpu_limit, cfg.document_root);
-    if (run_server(cfg.cpu_limit, sock_fd) != 0) {
-        destruct_logger();
+    if (run_server(sock_fd, &cfg) != 0) {
         close(sock_fd);
         return 0;
     }
@@ -179,7 +162,7 @@ static void read_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
 
     gettimeofday(&req->end_full_time, NULL);
     access_log(req);
-    
+
     ev_io_stop(loop, watcher);
     free(req);
     free(watcher);
@@ -192,10 +175,10 @@ static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
     if (client_sd > 0) {
         fcntl(client_sd, F_SETFL, fcntl(client_sd, F_GETFL, 0) | O_NONBLOCK);
 
-        // struct timeval timeout = {CLIENT_SOCKET_SEND_TIMEOUT, 0};
-        // setsockopt(client_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
-        // timeout.tv_sec = CLIENT_SOCKET_RECV_TIMEOUT;
-        // setsockopt(client_sd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+        struct timeval timeout = {CLIENT_SOCKET_SEND_TIMEOUT, 0};
+        setsockopt(client_sd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+        timeout.tv_sec = CLIENT_SOCKET_RECV_TIMEOUT;
+        setsockopt(client_sd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
 
         ev_io *client_watcher = calloc(1, sizeof(*client_watcher));
         if (!client_watcher) {
@@ -219,7 +202,7 @@ static void accept_cb(struct ev_loop *loop, ev_io *watcher, int revents) {
     }
 }
 
-int run_server(int cpu_limit, int sock_fd) {
+int run_server(int sock_fd, struct config_t *cfg) {
     struct ev_loop *loop = ev_default_loop(EVBACKEND_EPOLL | EVFLAG_FORKCHECK);
 
     signal(SIGCHLD, worker_exit_handler_job);
@@ -230,18 +213,30 @@ int run_server(int cpu_limit, int sock_fd) {
         return CREATING_EVLOOP_ERR;
     }
 
-    for (; cpu_limit > 0; --cpu_limit) {
+    for (; cfg->cpu_limit > 0; --cfg->cpu_limit) {
         int pid = fork();
         if (pid == -1) {
             return FORKING_ERR;
         }
 
         if (pid == 0) {
+            int init_logger_res = init_logger(cfg->server_log_path, cfg->access_log_path_prefix);
+            if (init_logger_res == OPENING_SERVER_LOG_FILE_ERR) {
+                printf("error opening server log file: %s", strerror(errno));
+                return 0;
+            }
+            if (init_logger_res == OPENING_ACCESS_LOG_FILE_ERR) {
+                printf("error opening access log file: %s", strerror(errno));
+                return 0;
+            }
+
+            info_log("process with pid %d, root directory %s started", getpid(), cfg->document_root);
             ev_io watcher = {0};
             ev_io_init(&watcher, accept_cb, sock_fd, EV_READ);
             ev_io_start(loop, &watcher);
             ev_run(loop, 0);
             ev_loop_destroy(loop);
+            destruct_logger();
             exit(0);
         }
 

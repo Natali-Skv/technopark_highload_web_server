@@ -12,7 +12,7 @@ struct config_t {
     int cpu_limit;
     char document_root[MAX_LEN_ROOT_PATH];
     char server_log_path[MAX_LEN_SERVER_LOG_PATH];
-    char access_log_path[MAX_LEN_ACCESS_LOG_PATH];
+    char access_log_path_prefix[MAX_LEN_ACCESS_LOG_PATH];
 };
 
 int set_config(int argc, char *argv[], struct config_t *cfg);

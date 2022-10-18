@@ -103,45 +103,29 @@ int send_response(int sock_fd, struct request_t *req) {
     ssize_t curr_sent = 0;
  
     while (req->resp_headers_offset < header_len) {
- 
         curr_sent = send(sock_fd, req->header_raw + req->resp_headers_offset, header_len - req->resp_headers_offset, 0);
         if (curr_sent == -1) {
- 
             if (errno == EAGAIN) {
- 
-                return SOCK_DOESNT_READY_FOR_READ;
+                return SOCK_DOESNT_READY_FOR_WRITE;
             }
- 
             request_err_log(req->req_id, "1 error sending response");
             return SOCK_ERR;
         }
- 
         req->resp_headers_offset += curr_sent;
     }
     if (req->resp_status_code != OK_CODE || req->method == HEAD_T) {
- 
         return OK;
     }
-    // TODO remove
-    // return OK;
-
  
     while (req->resp_body_sent < req->resp_content_length) {
- 
         curr_sent = sendfile(sock_fd, req->resp_body_fd, &req->resp_body_offset, req->resp_content_length);
- 
         if (curr_sent == -1) {
- 
             if (errno == EAGAIN) {
- 
-                return SOCK_DOESNT_READY_FOR_READ;
+                return SOCK_DOESNT_READY_FOR_WRITE;
             }
- 
             request_err_log(req->req_id, "2 error sending response");
- 
             return SOCK_ERR;
         }
- 
         req->resp_body_sent += curr_sent;
     }
  

@@ -62,7 +62,7 @@ int set_config(int argc, char *argv[], struct config_t *dst_cfg) {
                     printf("access log path must have [1..%d] symbols\n", MAX_LEN_ACCESS_LOG_PATH);
                     return WRANG_OPTIONS;
                 }
-                strncpy(dst_cfg->access_log_path, optarg, MAX_LEN_ACCESS_LOG_PATH);
+                strncpy(dst_cfg->access_log_path_prefix, optarg, MAX_LEN_ACCESS_LOG_PATH);
                 break;
             }
             case 'h': {
@@ -91,6 +91,12 @@ void set_config_default_values(struct config_t *cfg) {
     }
     if (!cfg->document_root[0]) {
         strcpy(cfg->document_root, DEFAULT_DOCUMENT_ROOT);
+    }
+    if (!cfg->access_log_path_prefix[0]) {
+        strcpy(cfg->access_log_path_prefix, DEFAULT_ACCESS_LOG_PATH_PREFIX);
+    }
+    if (!cfg->server_log_path[0]) {
+        strcpy(cfg->server_log_path, DEFAULT_SERVER_LOG_PATH_PREFIX);
     }
     if (cfg->port <= 0) {
         cfg->port = PORT;

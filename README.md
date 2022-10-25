@@ -132,7 +132,7 @@ Percentage of the requests served within a certain time (ms)
 Nginx был запущен командой `sudo docker run --cpus=4 -p 8888:8888 nginx_server` с worker_processes=4 и access_log=off  
 
 <details>
-  <summary>:purple_circle: Развернуть результаты нагрузочного тестирования написанного веб-сервера!</summary> 
+  <summary>:purple_circle: Развернуть результаты нагрузочного тестирования nginx!</summary> 
   
 ``` asm
 $ ab -n 100000 127.0.0.1:8888/httptest/wikipedia_russia.html
